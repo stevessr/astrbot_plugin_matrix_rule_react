@@ -1,0 +1,21 @@
+{
+  "matrix_rule_react": {
+    "description": "Matrix 规则 React",
+    "type": "object",
+    "items": {
+      "enable": {
+        "description": "启用条件 Reaction",
+        "type": "bool",
+        "hint": "收到 @机器人或 AstrBot 确认有效的唤醒前缀消息时发送 reaction",
+        "default": false
+      },
+      "emojis": {
+        "description": "React 列表",
+        "type": "list",
+        "items": { "type": "string" },
+        "hint": "例如 ['👍', '🤔', '✍️']；会忽略空值和重复项，也支持 mxc:// reaction key",
+        "default": ["🤗", "🐟", "🍞"]
+      }
+    }
+  }
+}
