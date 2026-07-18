@@ -15,15 +15,49 @@ Reaction。
 
 ## 触发规则
 
-以下任一条件成立时，从配置列表随机选择一个 Reaction key：
+动态规则按配置顺序匹配，首个命中的规则生效，每条消息最多发送一个
+Reaction：
+
+- `keyword`：原始消息文本包含指定关键字（区分大小写）；
+- `regex`：正则表达式在原始消息文本中匹配；
+- `user_id`：发件人完整 Matrix ID 与配置值相同。
+
+规则可以使用 `fixed` 固定 Reaction，或使用 `random` 从规则的 Reaction
+列表中随机选取。如果没有动态规则命中，继续使用原有唤醒规则，从全局
+`emojis` 列表随机选择：
 
 - 消息链明确 `@` 当前 Matrix 机器人；
 - 原始消息以当前会话使用的 AstrBot 全局 `wake_prefix` 开头，并且 AstrBot 已将它识别为
   有效唤醒消息。
 
-插件使用适配器提供的标准 `event.react()` 接口，不访问适配器私有配置。普通消息、仅在
-私聊中隐式唤醒的消息、机器人自身消息、缺少 Matrix event ID 的消息，以及空 Reaction
-列表都不会触发。发送失败只记录日志，不中断后续消息处理。
+插件使用适配器提供的标准 `event.react()` 接口，不访问适配器私有配置。不匹配动态规则且未
+显式唤醒的普通消息、机器人自身消息、缺少 Matrix event ID 的消息，以及空
+Reaction 列表都不会触发。发送失败只记录日志，不中断后续消息处理。
+
+## 管理员指令
+
+所有动态规则指令均位于 `/matrix rules react` 指令组下，并且需要 AstrBot
+管理员权限。
+
+```text
+/matrix rules react add <keyword|regex|user_id> <fixed|random> <Reaction列表> <匹配内容>
+/matrix rules react list
+/matrix rules react remove <规则编号>
+```
+
+`Reaction列表` 使用英文逗号分隔。`fixed` 模式必须且只能提供一项；
+`random` 模式可以提供多项。匹配内容位于命令末尾，因此关键字和正则可以包含空格。
+
+```text
+/matrix rules react add keyword fixed 👍 部署完成
+/matrix rules react add regex random 👍,🎉 ^build\s+(passed|success)$
+/matrix rules react add user_id fixed 👋 @alice:example.org
+/matrix rules react list
+/matrix rules react remove 2
+```
+
+指令会立即更新并持久化插件配置。动态规则仍受 `matrix_rule_react.enable`
+总开关控制；如果插件未启用，`add` 的返回消息会明确提示。
 
 ## 配置
 
@@ -31,7 +65,21 @@ Reaction。
 {
   "matrix_rule_react": {
     "enable": true,
-    "emojis": ["🤗", "🐟", "🍞", "mxc://example.org/media-id"]
+    "emojis": ["🤗", "🐟", "🍞", "mxc://example.org/media-id"],
+    "rules": [
+      {
+        "match_type": "keyword",
+        "pattern": "部署完成",
+        "selection": "fixed",
+        "reactions": ["👍"]
+      },
+      {
+        "match_type": "regex",
+        "pattern": "^build\\s+(passed|success)$",
+        "selection": "random",
+        "reactions": ["👍", "🎉"]
+      }
+    ]
   }
 }
 ```

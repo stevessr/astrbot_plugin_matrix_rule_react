@@ -15,6 +15,44 @@
         "items": { "type": "string" },
         "hint": "例如 ['👍', '🤔', '✍️']；会忽略空值和重复项，也支持 mxc:// reaction key",
         "default": ["🤗", "🐟", "🍞"]
+      },
+      "rules": {
+        "description": "动态 Reaction 规则",
+        "type": "template_list",
+        "hint": "按列表顺序匹配，首个匹配的规则生效；可通过 /matrix rules react 管理",
+        "default": [],
+        "templates": {
+          "reaction_rule": {
+            "name": "Matrix Reaction Rule",
+            "items": {
+              "match_type": {
+                "description": "匹配类型",
+                "type": "string",
+                "options": ["keyword", "regex", "user_id"],
+                "default": "keyword"
+              },
+              "pattern": {
+                "description": "匹配内容",
+                "type": "string",
+                "hint": "关键字、正则表达式或完整 Matrix 用户 ID",
+                "default": ""
+              },
+              "selection": {
+                "description": "Reaction 选取模式",
+                "type": "string",
+                "options": ["fixed", "random"],
+                "default": "fixed"
+              },
+              "reactions": {
+                "description": "Reaction 列表",
+                "type": "list",
+                "items": { "type": "string" },
+                "hint": "fixed 模式使用第一项，random 模式随机选取",
+                "default": ["👍"]
+              }
+            }
+          }
+        }
       }
     }
   }

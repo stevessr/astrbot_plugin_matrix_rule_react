@@ -1,8 +1,8 @@
 name: astrbot_plugin_matrix_rule_react
 display_name: Matrix 规则 React
-description: 在 Matrix 消息 @机器人或使用唤醒前缀时，按配置随机发送表情回应
+description: 根据唤醒、关键字、正则表达式或用户 ID 规则发送 Matrix Reaction
 author: stevessr
-version: 0.2.0
+version: 0.3.0
 repo: https://github.com/stevessr/astrbot_plugin_matrix_rule_react
 astrbot_version: ">=4.16.0"
 support_platforms:

@@ -6,8 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+from astrbot.api.event import filter
 from astrbot.api.message_components import At
-
 from data.plugins.astrbot_plugin_matrix_rule_react.main import (
     MatrixRuleReactPlugin,
     MatrixRuleReactTriggerFilter,
@@ -99,6 +99,34 @@ class FakeEvent:
             raise self.reaction_error
         self.reactions.append(emoji)
 
+    def plain_result(self, text: str) -> str:
+        """Return command text without constructing an AstrBot result object.
+
+        Args:
+            text: Command response text.
+
+        Returns:
+            Unchanged response text.
+        """
+        return text
+
+
+class PersistedConfig(dict):
+    """Dictionary config that records explicit persistence requests."""
+
+    def __init__(self, value: dict) -> None:
+        """Initialize the fake persisted configuration.
+
+        Args:
+            value: Initial plugin configuration.
+        """
+        super().__init__(value)
+        self.save_count = 0
+
+    def save_config(self) -> None:
+        """Record one configuration persistence request."""
+        self.save_count += 1
+
 
 class TriggerFilterTests(unittest.TestCase):
     """Verify that the handler cannot wake unrelated Matrix messages."""
@@ -172,6 +200,17 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(event.reactions, [])
 
+    async def test_enabled_plugin_ignores_an_unmatched_ordinary_message(self) -> None:
+        """The all-message handler should stay passive when no rule matches."""
+        plugin = self.make_plugin(
+            {"matrix_rule_react": {"enable": True, "emojis": ["👍"], "rules": []}}
+        )
+        event = FakeEvent(message_text="hello", is_native_wake=False)
+
+        await plugin.on_message(event)
+
+        self.assertEqual(event.reactions, [])
+
     async def test_reacts_once_with_normalized_unique_keys(self) -> None:
         """Enabled configuration should trim, de-duplicate, and select one key."""
         plugin = self.make_plugin(
@@ -182,7 +221,7 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
                 }
             }
         )
-        event = FakeEvent()
+        event = FakeEvent(message_text="/hello")
 
         with mock.patch(
             "data.plugins.astrbot_plugin_matrix_rule_react.main.random.choice",
@@ -216,18 +255,175 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
         plugin = self.make_plugin(
             {"matrix_rule_react": {"enable": True, "emojis": ["👍"]}}
         )
-        event = FakeEvent(reaction_error=RuntimeError("send failed"))
+        event = FakeEvent(
+            message_text="/hello",
+            reaction_error=RuntimeError("send failed"),
+        )
 
         await plugin.on_message(event)
 
         self.assertEqual(event.reactions, [])
 
+    async def test_keyword_rule_reacts_without_an_astrbot_wake(self) -> None:
+        """A keyword rule should handle an otherwise ordinary Matrix message."""
+        plugin = self.make_plugin(
+            {
+                "matrix_rule_react": {
+                    "enable": True,
+                    "emojis": ["🤗"],
+                    "rules": [
+                        {
+                            "match_type": "keyword",
+                            "pattern": "build passed",
+                            "selection": "fixed",
+                            "reactions": ["👍"],
+                        },
+                        {
+                            "match_type": "keyword",
+                            "pattern": "build",
+                            "selection": "fixed",
+                            "reactions": ["🎉"],
+                        },
+                    ],
+                }
+            }
+        )
+        event = FakeEvent(message_text="the build passed now", is_native_wake=False)
+
+        await plugin.on_message(event)
+
+        self.assertEqual(event.reactions, ["👍"])
+
+    async def test_regex_rule_randomly_selects_a_reaction(self) -> None:
+        """A regex rule should randomly select from its normalized reaction list."""
+        plugin = self.make_plugin(
+            {
+                "matrix_rule_react": {
+                    "enable": True,
+                    "rules": [
+                        {
+                            "match_type": "regex",
+                            "pattern": r"^deploy\s+success$",
+                            "selection": "random",
+                            "reactions": [" 🎉 ", "🎉", "🚀"],
+                        }
+                    ],
+                }
+            }
+        )
+        event = FakeEvent(message_text="deploy success", is_native_wake=False)
+
+        with mock.patch(
+            "data.plugins.astrbot_plugin_matrix_rule_react.main.random.choice",
+            return_value="🚀",
+        ) as choice:
+            await plugin.on_message(event)
+
+        choice.assert_called_once_with(["🎉", "🚀"])
+        self.assertEqual(event.reactions, ["🚀"])
+
+    async def test_user_id_rule_matches_the_exact_sender(self) -> None:
+        """A user-ID rule should match only the configured Matrix sender."""
+        plugin = self.make_plugin(
+            {
+                "matrix_rule_react": {
+                    "enable": True,
+                    "rules": [
+                        {
+                            "match_type": "user_id",
+                            "pattern": "@alice:example.org",
+                            "selection": "fixed",
+                            "reactions": ["👋"],
+                        }
+                    ],
+                }
+            }
+        )
+        matching_event = FakeEvent(is_native_wake=False)
+        other_event = FakeEvent(
+            sender_id="@bob:example.org",
+            is_native_wake=False,
+        )
+
+        await plugin.on_message(matching_event)
+        await plugin.on_message(other_event)
+
+        self.assertEqual(matching_event.reactions, ["👋"])
+        self.assertEqual(other_event.reactions, [])
+
+    async def test_add_list_and_remove_commands_persist_rules(self) -> None:
+        """Administrator commands should mutate and persist the rule list."""
+        config = PersistedConfig(
+            {
+                "matrix_rule_react": {
+                    "enable": True,
+                    "emojis": ["🤗"],
+                    "rules": [],
+                }
+            }
+        )
+        plugin = MatrixRuleReactPlugin(SimpleNamespace(), config)
+        event = FakeEvent()
+
+        add_results = [
+            result
+            async for result in plugin.add_rule(
+                event,
+                "user",
+                "random",
+                "👋,🎉",
+                "@alice:example.org",
+            )
+        ]
+        added_template_key = config["matrix_rule_react"]["rules"][0]["__template_key"]
+        list_results = [result async for result in plugin.list_rules(event)]
+        remove_results = [result async for result in plugin.remove_rule(event, 1)]
+
+        self.assertIn("已添加规则 #1", add_results[0])
+        self.assertEqual(added_template_key, "reaction_rule")
+        self.assertIn("[user_id/random]", list_results[0])
+        self.assertIn("已移除规则 #1", remove_results[0])
+        self.assertEqual(config["matrix_rule_react"]["rules"], [])
+        self.assertEqual(config.save_count, 2)
+
+    async def test_add_command_rejects_invalid_regex_and_fixed_list(self) -> None:
+        """The add command should reject unsafe or ambiguous rule definitions."""
+        config = PersistedConfig({"matrix_rule_react": {"enable": True, "rules": []}})
+        plugin = MatrixRuleReactPlugin(SimpleNamespace(), config)
+        event = FakeEvent()
+
+        regex_results = [
+            result
+            async for result in plugin.add_rule(
+                event,
+                "regex",
+                "fixed",
+                "👍",
+                "[",
+            )
+        ]
+        fixed_results = [
+            result
+            async for result in plugin.add_rule(
+                event,
+                "keyword",
+                "fixed",
+                "👍,🎉",
+                "done",
+            )
+        ]
+
+        self.assertIn("正则表达式无效", regex_results[0])
+        self.assertIn("fixed 模式", fixed_results[0])
+        self.assertEqual(config["matrix_rule_react"]["rules"], [])
+        self.assertEqual(config.save_count, 0)
+
 
 class PluginFileTests(unittest.TestCase):
     """Check the plugin's user-facing configuration contract."""
 
-    def test_handler_registration_keeps_the_trigger_filter(self) -> None:
-        """The message handler must filter rules before it can wake an event."""
+    def test_handler_registration_accepts_ordinary_matrix_messages(self) -> None:
+        """The message handler must see ordinary messages for dynamic matching."""
         from astrbot.core.star.star_handler import star_handlers_registry
 
         handler_name = f"{MatrixRuleReactPlugin.__module__}_on_message"
@@ -237,10 +433,43 @@ class PluginFileTests(unittest.TestCase):
             {type(item).__name__ for item in handler.event_filters},
             {
                 "EventMessageTypeFilter",
-                "MatrixRuleReactTriggerFilter",
                 "PlatformAdapterTypeFilter",
             },
         )
+
+    def test_rule_commands_use_the_nested_group_and_admin_permission(self) -> None:
+        """Every rule-management command should be nested and administrator-only."""
+        from astrbot.core.star.star_handler import star_handlers_registry
+
+        expected_commands = {
+            "add_rule": "matrix rules react add",
+            "list_rules": "matrix rules react list",
+            "remove_rule": "matrix rules react remove",
+        }
+        for handler_suffix, command_name in expected_commands.items():
+            handler_name = f"{MatrixRuleReactPlugin.__module__}_{handler_suffix}"
+            handler = star_handlers_registry.star_handlers_map[handler_name]
+            filter_names = {type(item).__name__ for item in handler.event_filters}
+            command_filter = next(
+                item
+                for item in handler.event_filters
+                if type(item).__name__ == "CommandFilter"
+            )
+            permission_filter = next(
+                item
+                for item in handler.event_filters
+                if type(item).__name__ == "PermissionTypeFilter"
+            )
+
+            self.assertEqual(
+                command_filter.get_complete_command_names(),
+                [command_name],
+            )
+            self.assertIn("PermissionTypeFilter", filter_names)
+            self.assertEqual(
+                permission_filter.permission_type,
+                filter.PermissionType.ADMIN,
+            )
 
     def test_metadata_declares_version_and_matrix_support(self) -> None:
         """Metadata should expose the plugin contract used by AstrBot's loader."""
@@ -250,7 +479,7 @@ class PluginFileTests(unittest.TestCase):
         metadata = PluginManager._load_plugin_metadata(str(plugin_root))
 
         self.assertIsNotNone(metadata)
-        self.assertEqual(metadata.version, "0.2.0")
+        self.assertEqual(metadata.version, "0.3.0")
         self.assertEqual(metadata.support_platforms, ["matrix"])
 
     def test_schema_defaults_are_safe(self) -> None:
@@ -261,6 +490,8 @@ class PluginFileTests(unittest.TestCase):
         config_items = schema["matrix_rule_react"]["items"]
         self.assertFalse(config_items["enable"]["default"])
         self.assertTrue(config_items["emojis"]["default"])
+        self.assertEqual(config_items["rules"]["type"], "template_list")
+        self.assertEqual(config_items["rules"]["default"], [])
 
 
 if __name__ == "__main__":
