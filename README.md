@@ -15,7 +15,9 @@ Reaction。
 
 ## 代码结构
 
-- `main.py`：插件入口、消息处理流程和管理员指令；
+- `main.py`：插件入口与 AstrBot 消息/指令装饰器绑定；
+- `message_handler.py`：消息校验、唤醒回退与 Reaction 发送流程；
+- `rule_commands.py`：管理员规则增删查及配置持久化；
 - `rules.py`：条件数组解析、旧规则兼容、规则匹配和动态 Reaction 选择；
 - `trigger_filter.py`：原有 `@机器人` / `wake_prefix` 唤醒条件过滤。
 
