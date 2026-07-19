@@ -354,7 +354,7 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
         event = FakeEvent(message_text="deploy success", is_native_wake=False)
 
         with mock.patch(
-            "data.plugins.astrbot_plugin_matrix_rule_react.main.random.choice",
+            "data.plugins.astrbot_plugin_matrix_rule_react.rules.random.choice",
             return_value="🚀",
         ) as choice:
             await plugin.on_message(event)
@@ -671,6 +671,26 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
 
 class PluginFileTests(unittest.TestCase):
     """Check the plugin's user-facing configuration contract."""
+
+    def test_main_delegates_rules_and_trigger_filter_to_separate_modules(self) -> None:
+        """The entrypoint should retain imports while logic lives in split modules."""
+        from data.plugins.astrbot_plugin_matrix_rule_react.rules import (
+            parse_conditions,
+            select_dynamic_reaction,
+        )
+
+        self.assertEqual(
+            MatrixRuleReactTriggerFilter.__module__,
+            "data.plugins.astrbot_plugin_matrix_rule_react.trigger_filter",
+        )
+        self.assertEqual(
+            parse_conditions.__module__,
+            "data.plugins.astrbot_plugin_matrix_rule_react.rules",
+        )
+        self.assertEqual(
+            select_dynamic_reaction.__module__,
+            "data.plugins.astrbot_plugin_matrix_rule_react.rules",
+        )
 
     def test_handler_registration_accepts_ordinary_matrix_messages(self) -> None:
         """The message handler must see ordinary messages for dynamic matching."""
