@@ -25,18 +25,6 @@
           "reaction_rule": {
             "name": "Matrix Reaction Rule",
             "items": {
-              "match_type": {
-                "description": "匹配类型",
-                "type": "string",
-                "options": ["keyword", "regex", "user_id"],
-                "default": "keyword"
-              },
-              "pattern": {
-                "description": "匹配内容",
-                "type": "string",
-                "hint": "关键字、正则表达式或完整 Matrix 用户 ID",
-                "default": ""
-              },
               "selection": {
                 "description": "Reaction 选取模式",
                 "type": "string",
@@ -49,6 +37,34 @@
                 "items": { "type": "string" },
                 "hint": "fixed 模式使用第一项，random 模式随机选取",
                 "default": ["👍"]
+              },
+              "conditions": {
+                "description": "匹配条件数组",
+                "type": "list",
+                "hint": "所有条件均匹配时规则才生效；通过 /matrix rules react add 管理",
+                "invisible": true,
+                "items": {
+                  "match_type": {
+                    "description": "匹配类型",
+                    "type": "string",
+                    "options": [
+                      "keyword",
+                      "regex",
+                      "user_id",
+                      "bot_id",
+                      "group_id",
+                      "message_type"
+                    ],
+                    "default": "keyword"
+                  },
+                  "pattern": {
+                    "description": "匹配内容",
+                    "type": "string",
+                    "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
+                    "default": ""
+                  }
+                },
+                "default": []
               }
             }
           }

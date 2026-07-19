@@ -8,6 +8,8 @@ from unittest import mock
 
 from astrbot.api.event import filter
 from astrbot.api.message_components import At
+from astrbot.core.platform.message_type import MessageType
+from astrbot.core.star.filter.command import GreedyStr
 from data.plugins.astrbot_plugin_matrix_rule_react.main import (
     MatrixRuleReactPlugin,
     MatrixRuleReactTriggerFilter,
@@ -25,6 +27,9 @@ class FakeEvent:
         messages: list | None = None,
         sender_id: str = "@alice:example.org",
         self_id: str = "@bot:example.org",
+        group_id: str = "!room:example.org",
+        message_type: MessageType = MessageType.GROUP_MESSAGE,
+        raw_msgtype: str = "m.text",
         event_id: str = "$event:example.org",
         is_native_wake: bool = True,
         reaction_error: Exception | None = None,
@@ -37,6 +42,9 @@ class FakeEvent:
             messages: Message components exposed by the event.
             sender_id: Matrix sender user ID.
             self_id: Matrix bot user ID.
+            group_id: Matrix room ID for a group message.
+            message_type: AstrBot conversation message type.
+            raw_msgtype: Matrix-native event ``msgtype``.
             event_id: Matrix event ID, or an empty string to simulate a bad event.
             is_native_wake: Whether AstrBot already recognized a native wake condition.
             reaction_error: Optional exception raised by ``react``.
@@ -44,12 +52,19 @@ class FakeEvent:
         self.message_obj = SimpleNamespace(
             message_id=event_id,
             message_str=message_text,
-            raw_message=SimpleNamespace(event_id=event_id),
+            type=message_type,
+            raw_message=SimpleNamespace(
+                event_id=event_id,
+                msgtype=raw_msgtype,
+                content={"msgtype": raw_msgtype},
+            ),
         )
         self.message_str = message_text if current_text is None else current_text
         self.messages = messages or []
         self.sender_id = sender_id
         self.self_id = self_id
+        self.group_id = group_id
+        self.message_type = message_type
         self.is_at_or_wake_command = is_native_wake
         self.reaction_error = reaction_error
         self.reactions: list[str] = []
@@ -85,6 +100,22 @@ class FakeEvent:
             Matrix bot user ID.
         """
         return self.self_id
+
+    def get_group_id(self) -> str:
+        """Return the fake Matrix room ID.
+
+        Returns:
+            Matrix room ID supplied at construction time.
+        """
+        return self.group_id
+
+    def get_message_type(self) -> MessageType:
+        """Return the fake AstrBot message type.
+
+        Returns:
+            AstrBot message type supplied at construction time.
+        """
+        return self.message_type
 
     async def react(self, emoji: str) -> None:
         """Record a requested reaction or raise the configured error.
@@ -273,16 +304,21 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
                     "emojis": ["🤗"],
                     "rules": [
                         {
-                            "match_type": "keyword",
-                            "pattern": "build passed",
                             "selection": "fixed",
                             "reactions": ["👍"],
+                            "conditions": [
+                                {
+                                    "match_type": "keyword",
+                                    "pattern": "build passed",
+                                }
+                            ],
                         },
                         {
-                            "match_type": "keyword",
-                            "pattern": "build",
                             "selection": "fixed",
                             "reactions": ["🎉"],
+                            "conditions": [
+                                {"match_type": "keyword", "pattern": "build"}
+                            ],
                         },
                     ],
                 }
@@ -302,10 +338,14 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
                     "enable": True,
                     "rules": [
                         {
-                            "match_type": "regex",
-                            "pattern": r"^deploy\s+success$",
                             "selection": "random",
                             "reactions": [" 🎉 ", "🎉", "🚀"],
+                            "conditions": [
+                                {
+                                    "match_type": "regex",
+                                    "pattern": r"^deploy\s+success$",
+                                }
+                            ],
                         }
                     ],
                 }
@@ -330,10 +370,14 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
                     "enable": True,
                     "rules": [
                         {
-                            "match_type": "user_id",
-                            "pattern": "@alice:example.org",
                             "selection": "fixed",
                             "reactions": ["👋"],
+                            "conditions": [
+                                {
+                                    "match_type": "user_id",
+                                    "pattern": "@alice:example.org",
+                                }
+                            ],
                         }
                     ],
                 }
@@ -350,6 +394,113 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(matching_event.reactions, ["👋"])
         self.assertEqual(other_event.reactions, [])
+
+    async def test_multi_condition_rule_requires_every_supported_condition(
+        self,
+    ) -> None:
+        """All six supported condition types should combine with AND semantics."""
+        plugin = self.make_plugin(
+            {
+                "matrix_rule_react": {
+                    "enable": True,
+                    "rules": [
+                        {
+                            "selection": "fixed",
+                            "reactions": ["✅"],
+                            "conditions": [
+                                {"match_type": "keyword", "pattern": "deploy"},
+                                {
+                                    "match_type": "regex",
+                                    "pattern": r"passed$",
+                                },
+                                {
+                                    "match_type": "user_id",
+                                    "pattern": "@alice:example.org",
+                                },
+                                {
+                                    "match_type": "bot_id",
+                                    "pattern": "@bot:example.org",
+                                },
+                                {
+                                    "match_type": "group_id",
+                                    "pattern": "!ci:example.org",
+                                },
+                                {
+                                    "match_type": "message_type",
+                                    "pattern": "group",
+                                },
+                            ],
+                        }
+                    ],
+                }
+            }
+        )
+        matching_event = FakeEvent(
+            message_text="deploy passed",
+            group_id="!ci:example.org",
+            is_native_wake=False,
+        )
+        wrong_group_event = FakeEvent(
+            message_text="deploy passed",
+            group_id="!other:example.org",
+            is_native_wake=False,
+        )
+
+        await plugin.on_message(matching_event)
+        await plugin.on_message(wrong_group_event)
+
+        self.assertEqual(matching_event.reactions, ["✅"])
+        self.assertEqual(wrong_group_event.reactions, [])
+
+    async def test_message_type_accepts_matrix_native_msgtype(self) -> None:
+        """A message-type condition may target Matrix's native ``msgtype``."""
+        plugin = self.make_plugin(
+            {
+                "matrix_rule_react": {
+                    "enable": True,
+                    "rules": [
+                        {
+                            "selection": "fixed",
+                            "reactions": ["📝"],
+                            "conditions": [
+                                {"match_type": "message_type", "pattern": "m.text"}
+                            ],
+                        }
+                    ],
+                }
+            }
+        )
+        text_event = FakeEvent(raw_msgtype="m.text", is_native_wake=False)
+        image_event = FakeEvent(raw_msgtype="m.image", is_native_wake=False)
+
+        await plugin.on_message(text_event)
+        await plugin.on_message(image_event)
+
+        self.assertEqual(text_event.reactions, ["📝"])
+        self.assertEqual(image_event.reactions, [])
+
+    async def test_legacy_single_condition_rule_remains_compatible(self) -> None:
+        """Rules persisted before the conditions-array change should still work."""
+        plugin = self.make_plugin(
+            {
+                "matrix_rule_react": {
+                    "enable": True,
+                    "rules": [
+                        {
+                            "match_type": "keyword",
+                            "pattern": "legacy",
+                            "selection": "fixed",
+                            "reactions": ["♻️"],
+                        }
+                    ],
+                }
+            }
+        )
+        event = FakeEvent(message_text="legacy rule", is_native_wake=False)
+
+        await plugin.on_message(event)
+
+        self.assertEqual(event.reactions, ["♻️"])
 
     async def test_add_list_and_remove_commands_persist_rules(self) -> None:
         """Administrator commands should mutate and persist the rule list."""
@@ -369,19 +520,27 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
             result
             async for result in plugin.add_rule(
                 event,
-                "user",
                 "random",
                 "👋,🎉",
-                "@alice:example.org",
+                "(user_id @alice:example.org) (group_id !room:example.org)",
             )
         ]
-        added_template_key = config["matrix_rule_react"]["rules"][0]["__template_key"]
+        added_rule = config["matrix_rule_react"]["rules"][0]
         list_results = [result async for result in plugin.list_rules(event)]
         remove_results = [result async for result in plugin.remove_rule(event, 1)]
 
         self.assertIn("已添加规则 #1", add_results[0])
-        self.assertEqual(added_template_key, "reaction_rule")
-        self.assertIn("[user_id/random]", list_results[0])
+        self.assertEqual(added_rule["__template_key"], "reaction_rule")
+        self.assertEqual(
+            added_rule["conditions"],
+            [
+                {"match_type": "user_id", "pattern": "@alice:example.org"},
+                {"match_type": "group_id", "pattern": "!room:example.org"},
+            ],
+        )
+        self.assertIn("[random]", list_results[0])
+        self.assertIn("user_id='@alice:example.org'", list_results[0])
+        self.assertIn("group_id='!room:example.org'", list_results[0])
         self.assertIn("已移除规则 #1", remove_results[0])
         self.assertEqual(config["matrix_rule_react"]["rules"], [])
         self.assertEqual(config.save_count, 2)
@@ -396,25 +555,116 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
             result
             async for result in plugin.add_rule(
                 event,
-                "regex",
                 "fixed",
                 "👍",
-                "[",
+                "(regex [)",
             )
         ]
         fixed_results = [
             result
             async for result in plugin.add_rule(
                 event,
-                "keyword",
                 "fixed",
                 "👍,🎉",
-                "done",
+                "(keyword done)",
             )
         ]
 
         self.assertIn("正则表达式无效", regex_results[0])
         self.assertIn("fixed 模式", fixed_results[0])
+        self.assertEqual(config["matrix_rule_react"]["rules"], [])
+        self.assertEqual(config.save_count, 0)
+
+    async def test_add_command_parses_grouped_regex_and_quoted_content(self) -> None:
+        """Grouped conditions should preserve regex syntax and quoted type words."""
+        config = PersistedConfig({"matrix_rule_react": {"enable": True, "rules": []}})
+        plugin = MatrixRuleReactPlugin(SimpleNamespace(), config)
+        event = FakeEvent()
+
+        results = [
+            result
+            async for result in plugin.add_rule(
+                event,
+                "random",
+                "👍,🎉",
+                r"(regex ^build\s+(passed|success)$) "
+                r'(keyword "contains user_id word") (message_type m.text)',
+            )
+        ]
+
+        self.assertIn("已添加规则 #1", results[0])
+        self.assertEqual(
+            config["matrix_rule_react"]["rules"][0]["conditions"],
+            [
+                {
+                    "match_type": "regex",
+                    "pattern": r"^build\s+(passed|success)$",
+                },
+                {"match_type": "keyword", "pattern": "contains user_id word"},
+                {"match_type": "message_type", "pattern": "m.text"},
+            ],
+        )
+        self.assertEqual(config.save_count, 1)
+
+    async def test_add_command_accepts_flat_variable_length_conditions(self) -> None:
+        """The condition tail should also accept an unparenthesized sequence."""
+        config = PersistedConfig({"matrix_rule_react": {"enable": True, "rules": []}})
+        plugin = MatrixRuleReactPlugin(SimpleNamespace(), config)
+        event = FakeEvent()
+
+        results = [
+            result
+            async for result in plugin.add_rule(
+                event,
+                "fixed",
+                "✅",
+                "keyword build passed user_id @alice:example.org "
+                "bot_id @bot:example.org group_id !room:example.org "
+                "message_type group",
+            )
+        ]
+
+        conditions = config["matrix_rule_react"]["rules"][0]["conditions"]
+        self.assertIn("已添加规则 #1", results[0])
+        self.assertEqual(len(conditions), 5)
+        self.assertEqual(
+            conditions[0], {"match_type": "keyword", "pattern": "build passed"}
+        )
+        self.assertEqual(
+            conditions[-1], {"match_type": "message_type", "pattern": "group"}
+        )
+
+    async def test_add_command_requires_valid_condition_array(self) -> None:
+        """Empty, unsupported, and malformed condition arrays must be rejected."""
+        config = PersistedConfig({"matrix_rule_react": {"enable": True, "rules": []}})
+        plugin = MatrixRuleReactPlugin(SimpleNamespace(), config)
+        event = FakeEvent()
+
+        empty_results = [
+            result async for result in plugin.add_rule(event, "fixed", "👍", "")
+        ]
+        unknown_results = [
+            result
+            async for result in plugin.add_rule(
+                event,
+                "fixed",
+                "👍",
+                "(unknown value)",
+            )
+        ]
+        unclosed_results = [
+            result
+            async for result in plugin.add_rule(
+                event,
+                "fixed",
+                "👍",
+                "(keyword value",
+            )
+        ]
+
+        self.assertIn("至少需要提供一个", empty_results[0])
+        self.assertIn("规则类型无效", unknown_results[0])
+        self.assertIn("括号未闭合", unclosed_results[0])
         self.assertEqual(config["matrix_rule_react"]["rules"], [])
         self.assertEqual(config.save_count, 0)
 
@@ -470,6 +720,35 @@ class PluginFileTests(unittest.TestCase):
                 permission_filter.permission_type,
                 filter.PermissionType.ADMIN,
             )
+            if handler_suffix == "add_rule":
+                self.assertEqual(
+                    list(command_filter.handler_params),
+                    ["selection", "reactions", "condition_array"],
+                )
+                self.assertIs(
+                    command_filter.handler_params["condition_array"],
+                    GreedyStr,
+                )
+                self.assertEqual(
+                    command_filter.validate_and_convert_params(
+                        [
+                            "random",
+                            "👍,🎉",
+                            "(keyword",
+                            "build",
+                            "passed)",
+                            "(group_id",
+                            "!ci:example.org)",
+                        ],
+                        command_filter.handler_params,
+                    ),
+                    {
+                        "selection": "random",
+                        "reactions": "👍,🎉",
+                        "condition_array": "(keyword build passed) "
+                        "(group_id !ci:example.org)",
+                    },
+                )
 
     def test_metadata_declares_version_and_matrix_support(self) -> None:
         """Metadata should expose the plugin contract used by AstrBot's loader."""
@@ -479,7 +758,7 @@ class PluginFileTests(unittest.TestCase):
         metadata = PluginManager._load_plugin_metadata(str(plugin_root))
 
         self.assertIsNotNone(metadata)
-        self.assertEqual(metadata.version, "0.3.0")
+        self.assertEqual(metadata.version, "0.4.0")
         self.assertEqual(metadata.support_platforms, ["matrix"])
 
     def test_schema_defaults_are_safe(self) -> None:
@@ -492,6 +771,19 @@ class PluginFileTests(unittest.TestCase):
         self.assertTrue(config_items["emojis"]["default"])
         self.assertEqual(config_items["rules"]["type"], "template_list")
         self.assertEqual(config_items["rules"]["default"], [])
+        rule_items = config_items["rules"]["templates"]["reaction_rule"]["items"]
+        self.assertEqual(rule_items["conditions"]["type"], "list")
+        self.assertEqual(
+            rule_items["conditions"]["items"]["match_type"]["options"],
+            [
+                "keyword",
+                "regex",
+                "user_id",
+                "bot_id",
+                "group_id",
+                "message_type",
+            ],
+        )
 
 
 if __name__ == "__main__":
