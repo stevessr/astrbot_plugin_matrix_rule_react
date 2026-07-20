@@ -77,21 +77,25 @@
                       "user_id",
                       "bot_id",
                       "group_id",
-                      "message_type",
-                      "not_keyword",
-                      "not_regex",
-                      "not_user_id",
-                      "not_bot_id",
-                      "not_group_id",
-                      "not_message_type"
+                      "message_type"
                     ],
                     "default": "keyword"
                   },
-                  "pattern": {
+                  "negated": {
+                    "description": "反向匹配（未发现）",
+                    "type": "bool",
+                    "default": false
+                  },
+                  "patterns": {
                     "description": "匹配内容",
-                    "type": "string",
-                    "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
-                    "default": ""
+                    "type": "list",
+                    "items": {
+                      "type": "string"
+                    },
+                    "hint": "多个值之间为 OR 关系，任一匹配即命中",
+                    "default": [
+                      ""
+                    ]
                   }
                 }
               }
@@ -146,21 +150,25 @@
                       "user_id",
                       "bot_id",
                       "group_id",
-                      "message_type",
-                      "not_keyword",
-                      "not_regex",
-                      "not_user_id",
-                      "not_bot_id",
-                      "not_group_id",
-                      "not_message_type"
+                      "message_type"
                     ],
                     "default": "keyword"
                   },
-                  "pattern": {
+                  "negated": {
+                    "description": "反向匹配（未发现）",
+                    "type": "bool",
+                    "default": false
+                  },
+                  "patterns": {
                     "description": "匹配内容",
-                    "type": "string",
-                    "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
-                    "default": ""
+                    "type": "list",
+                    "items": {
+                      "type": "string"
+                    },
+                    "hint": "多个值之间为 OR 关系，任一匹配即命中",
+                    "default": [
+                      ""
+                    ]
                   }
                 }
               },
@@ -177,21 +185,25 @@
                       "user_id",
                       "bot_id",
                       "group_id",
-                      "message_type",
-                      "not_keyword",
-                      "not_regex",
-                      "not_user_id",
-                      "not_bot_id",
-                      "not_group_id",
-                      "not_message_type"
+                      "message_type"
                     ],
                     "default": "keyword"
                   },
-                  "pattern": {
+                  "negated": {
+                    "description": "反向匹配（未发现）",
+                    "type": "bool",
+                    "default": false
+                  },
+                  "patterns": {
                     "description": "匹配内容",
-                    "type": "string",
-                    "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
-                    "default": ""
+                    "type": "list",
+                    "items": {
+                      "type": "string"
+                    },
+                    "hint": "多个值之间为 OR 关系，任一匹配即命中",
+                    "default": [
+                      ""
+                    ]
                   }
                 }
               }
@@ -246,21 +258,25 @@
                       "user_id",
                       "bot_id",
                       "group_id",
-                      "message_type",
-                      "not_keyword",
-                      "not_regex",
-                      "not_user_id",
-                      "not_bot_id",
-                      "not_group_id",
-                      "not_message_type"
+                      "message_type"
                     ],
                     "default": "keyword"
                   },
-                  "pattern": {
+                  "negated": {
+                    "description": "反向匹配（未发现）",
+                    "type": "bool",
+                    "default": false
+                  },
+                  "patterns": {
                     "description": "匹配内容",
-                    "type": "string",
-                    "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
-                    "default": ""
+                    "type": "list",
+                    "items": {
+                      "type": "string"
+                    },
+                    "hint": "多个值之间为 OR 关系，任一匹配即命中",
+                    "default": [
+                      ""
+                    ]
                   }
                 }
               },
@@ -277,21 +293,25 @@
                       "user_id",
                       "bot_id",
                       "group_id",
-                      "message_type",
-                      "not_keyword",
-                      "not_regex",
-                      "not_user_id",
-                      "not_bot_id",
-                      "not_group_id",
-                      "not_message_type"
+                      "message_type"
                     ],
                     "default": "keyword"
                   },
-                  "pattern": {
+                  "negated": {
+                    "description": "反向匹配（未发现）",
+                    "type": "bool",
+                    "default": false
+                  },
+                  "patterns": {
                     "description": "匹配内容",
-                    "type": "string",
-                    "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
-                    "default": ""
+                    "type": "list",
+                    "items": {
+                      "type": "string"
+                    },
+                    "hint": "多个值之间为 OR 关系，任一匹配即命中",
+                    "default": [
+                      ""
+                    ]
                   }
                 }
               }
@@ -352,21 +372,25 @@
                           "user_id",
                           "bot_id",
                           "group_id",
-                          "message_type",
-                          "not_keyword",
-                          "not_regex",
-                          "not_user_id",
-                          "not_bot_id",
-                          "not_group_id",
-                          "not_message_type"
+                          "message_type"
                         ],
                         "default": "keyword"
                       },
-                      "pattern": {
+                      "negated": {
+                        "description": "反向匹配（未发现）",
+                        "type": "bool",
+                        "default": false
+                      },
+                      "patterns": {
                         "description": "匹配内容",
-                        "type": "string",
-                        "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
-                        "default": ""
+                        "type": "list",
+                        "items": {
+                          "type": "string"
+                        },
+                        "hint": "多个值之间为 OR 关系，任一匹配即命中",
+                        "default": [
+                          ""
+                        ]
                       }
                     }
                   }
@@ -430,21 +454,25 @@
                           "user_id",
                           "bot_id",
                           "group_id",
-                          "message_type",
-                          "not_keyword",
-                          "not_regex",
-                          "not_user_id",
-                          "not_bot_id",
-                          "not_group_id",
-                          "not_message_type"
+                          "message_type"
                         ],
                         "default": "keyword"
                       },
-                      "pattern": {
+                      "negated": {
+                        "description": "反向匹配（未发现）",
+                        "type": "bool",
+                        "default": false
+                      },
+                      "patterns": {
                         "description": "匹配内容",
-                        "type": "string",
-                        "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
-                        "default": ""
+                        "type": "list",
+                        "items": {
+                          "type": "string"
+                        },
+                        "hint": "多个值之间为 OR 关系，任一匹配即命中",
+                        "default": [
+                          ""
+                        ]
                       }
                     }
                   }

@@ -1150,46 +1150,41 @@ class PluginFileTests(unittest.TestCase):
             "all_rule": "all",
             "any_rule": "any",
         }
-        condition_options = [
+        base_options = [
             "keyword",
             "regex",
             "user_id",
             "bot_id",
             "group_id",
             "message_type",
-            "not_keyword",
-            "not_regex",
-            "not_user_id",
-            "not_bot_id",
-            "not_group_id",
-            "not_message_type",
         ]
         for template_key, match_mode in expected_templates.items():
             with self.subTest(template_key=template_key):
                 rule_items = templates[template_key]["items"]
                 self.assertEqual(rule_items["match_mode"]["default"], match_mode)
                 if template_key in {"all_rule", "any_rule"}:
+                    ci = rule_items["conditions"]["templates"]["condition"]["items"]
                     self.assertEqual(rule_items["conditions"]["type"], "template_list")
                     self.assertFalse(rule_items["conditions"]["invisible"])
-                    self.assertEqual(
-                        rule_items["conditions"]["templates"]["condition"]["items"][
-                            "match_type"
-                        ]["options"],
-                        condition_options,
-                    )
+                    self.assertEqual(ci["match_type"]["options"], base_options)
+                    self.assertEqual(ci["negated"]["type"], "bool")
+                    self.assertFalse(ci["negated"]["default"])
+                    self.assertEqual(ci["patterns"]["type"], "list")
                 elif template_key == "single_rule":
+                    ci = rule_items["condition"]["items"]
                     self.assertEqual(rule_items["condition"]["type"], "object")
-                    self.assertEqual(
-                        rule_items["condition"]["items"]["match_type"]["options"],
-                        condition_options,
-                    )
+                    self.assertEqual(ci["match_type"]["options"], base_options)
+                    self.assertEqual(ci["negated"]["type"], "bool")
+                    self.assertFalse(ci["negated"]["default"])
+                    self.assertEqual(ci["patterns"]["type"], "list")
                 else:
                     for condition_key in ("condition_a", "condition_b"):
+                        ci = rule_items[condition_key]["items"]
                         self.assertEqual(rule_items[condition_key]["type"], "object")
-                        self.assertEqual(
-                            rule_items[condition_key]["items"]["match_type"]["options"],
-                            condition_options,
-                        )
+                        self.assertEqual(ci["match_type"]["options"], base_options)
+                        self.assertEqual(ci["negated"]["type"], "bool")
+                        self.assertFalse(ci["negated"]["default"])
+                        self.assertEqual(ci["patterns"]["type"], "list")
 
 
 if __name__ == "__main__":

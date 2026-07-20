@@ -250,12 +250,39 @@ def normalize_rule_conditions(raw_rule: dict) -> list[dict[str, str]] | None:
             .lower()
         )
         match_type = MATCH_TYPE_ALIASES.get(match_type, match_type)
-        pattern = str(
-            raw_condition.get("pattern", raw_condition.get("value")) or ""
-        ).strip()
-        if match_type not in ALL_MATCH_TYPES or not pattern:
+
+        # Detect negation from prefix or explicit negated flag
+        negated_prefix = match_type.startswith("not_")
+        if negated_prefix:
+            match_type = match_type[4:]
+        negated = bool(raw_condition.get("negated", False)) or negated_prefix
+
+        # Read patterns list, or fall back to single pattern/vale
+        patterns = raw_condition.get("patterns")
+        if isinstance(patterns, list) and patterns:
+            patterns = [str(p).strip() for p in patterns if isinstance(p, str) and p.strip()]
+        else:
+            raw_pattern = str(
+                raw_condition.get("pattern", raw_condition.get("value")) or ""
+            ).strip()
+            patterns = [raw_pattern] if raw_pattern else []
+
+        if match_type not in MATCH_TYPES or not patterns:
             return None
-        conditions.append({"match_type": match_type, "pattern": pattern})
+
+        # Validate regex patterns
+        for p in patterns:
+            if match_type == "regex":
+                try:
+                    re.compile(p)
+                except re.error:
+                    return None
+
+        conditions.append({
+            "match_type": match_type,
+            "patterns": patterns,
+            "negated": negated,
+        })
 
     return conditions or None
 
@@ -294,10 +321,19 @@ def format_conditions(conditions: list[dict[str, str]], match_mode: str = "all")
         A compact expression suitable for add, list, and remove results.
     """
     separator = " OR " if match_mode == "any" else " AND "
-    return separator.join(
-        f"{condition['match_type']}={condition['pattern']!r}"
-        for condition in conditions
-    )
+    parts = []
+    for condition in conditions:
+        match_type = condition["match_type"]
+        negated = condition.get("negated", False)
+        raw_mt = f"not_{match_type}" if negated else match_type
+        patterns = condition.get("patterns", [condition.get("pattern", "")] if condition.get("pattern") else [])
+        if isinstance(patterns, list) and len(patterns) > 1:
+            parts.append(f"{raw_mt}={', '.join(repr(p) for p in patterns)}")
+        elif patterns:
+            parts.append(f"{raw_mt}={patterns[0]!r}")
+        else:
+            parts.append(f"{raw_mt}=?")
+    return separator.join(parts)
 
 
 def _check_rule_probability(raw_rule: dict) -> bool:
@@ -424,34 +460,52 @@ def select_dynamic_reaction(event: AstrMessageEvent, raw_rules: object) -> str:
         matched = match_mode == "all"
         for condition in conditions:
             match_type = condition["match_type"]
-            negated = match_type.startswith("not_")
-            base_type = match_type[4:] if negated else match_type
-            pattern = condition["pattern"]
-            if base_type == "keyword":
-                base_matches = pattern in message_text
-            elif base_type == "user_id":
-                base_matches = pattern == sender_id
-            elif base_type == "bot_id":
-                base_matches = pattern == bot_id
-            elif base_type == "group_id":
-                base_matches = pattern == group_id
-            elif base_type == "message_type":
-                normalized_pattern = pattern.lower().replace("-", "_")
-                normalized_pattern = MESSAGE_TYPE_ALIASES.get(
-                    normalized_pattern,
-                    normalized_pattern,
-                )
-                base_matches = normalized_pattern in message_types
-            else:
-                try:
-                    base_matches = re.search(pattern, message_text) is not None
-                except re.error as exc:
-                    logger.debug(
-                        "Skipping invalid Matrix reaction regex %r: %s",
-                        pattern,
-                        exc,
+            negated = condition.get("negated", False)
+            base_type = match_type[4:] if match_type.startswith("not_") else match_type
+            patterns = condition.get("patterns", [condition.get("pattern", "")] if condition.get("pattern") else [])
+            if not isinstance(patterns, list):
+                patterns = [str(patterns)] if patterns else []
+
+            # Check if any pattern in the list matches
+            base_matches = False
+            for pattern in patterns:
+                if base_type == "keyword":
+                    if pattern in message_text:
+                        base_matches = True
+                        break
+                elif base_type == "user_id":
+                    if pattern == sender_id:
+                        base_matches = True
+                        break
+                elif base_type == "bot_id":
+                    if pattern == bot_id:
+                        base_matches = True
+                        break
+                elif base_type == "group_id":
+                    if pattern == group_id:
+                        base_matches = True
+                        break
+                elif base_type == "message_type":
+                    normalized_pattern = pattern.lower().replace("-", "_")
+                    normalized_pattern = MESSAGE_TYPE_ALIASES.get(
+                        normalized_pattern,
+                        normalized_pattern,
                     )
-                    base_matches = False
+                    if normalized_pattern in message_types:
+                        base_matches = True
+                        break
+                else:
+                    try:
+                        if re.search(pattern, message_text) is not None:
+                            base_matches = True
+                            break
+                    except re.error as exc:
+                        logger.debug(
+                            "Skipping invalid Matrix reaction regex %r: %s",
+                            pattern,
+                            exc,
+                        )
+
             condition_matches = not base_matches if negated else base_matches
             if match_mode == "all" and not condition_matches:
                 matched = False
