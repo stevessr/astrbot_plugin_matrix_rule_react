@@ -477,105 +477,91 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
         """The five dashboard templates should implement their named relations."""
         template_cases = [
             (
-                "single_rule",
+                "all_rule",
                 {
-                    "condition_a": {"match_type": "keyword", "pattern": "deploy"},
+                    "conditions": [
+                        {"match_type": "keyword", "pattern": "deploy"},
+                    ],
                 },
                 FakeEvent(message_text="deploy passed", is_native_wake=False),
                 ["🅰️"],
             ),
             (
-                "a_and_b",
+                "all_rule",
                 {
-                    "condition_a": {"match_type": "keyword", "pattern": "deploy"},
-                    "condition_b": {
-                        "match_type": "user_id",
-                        "pattern": "@alice:example.org",
-                    },
+                    "conditions": [
+                        {"match_type": "keyword", "pattern": "deploy"},
+                        {"match_type": "user_id", "pattern": "@alice:example.org"},
+                    ],
                 },
                 FakeEvent(message_text="deploy passed", is_native_wake=False),
                 ["🅰️"],
             ),
             (
-                "a_and_b",
+                "all_rule",
                 {
-                    "condition_a": {"match_type": "keyword", "pattern": "deploy"},
-                    "condition_b": {
-                        "match_type": "user_id",
-                        "pattern": "@bob:example.org",
-                    },
+                    "conditions": [
+                        {"match_type": "keyword", "pattern": "deploy"},
+                        {"match_type": "user_id", "pattern": "@bob:example.org"},
+                    ],
                 },
                 FakeEvent(message_text="deploy passed", is_native_wake=False),
                 [],
             ),
             (
-                "a_or_b",
+                "any_rule",
                 {
-                    "condition_a": {"match_type": "keyword", "pattern": "failed"},
-                    "condition_b": {
-                        "match_type": "user_id",
-                        "pattern": "@alice:example.org",
-                    },
+                    "conditions": [
+                        {"match_type": "keyword", "pattern": "failed"},
+                        {"match_type": "user_id", "pattern": "@alice:example.org"},
+                    ],
                 },
                 FakeEvent(message_text="deploy passed", is_native_wake=False),
                 ["🅰️"],
             ),
             (
-                "a_or_b",
+                "any_rule",
                 {
-                    "condition_a": {"match_type": "keyword", "pattern": "failed"},
-                    "condition_b": {
-                        "match_type": "user_id",
-                        "pattern": "@bob:example.org",
-                    },
+                    "conditions": [
+                        {"match_type": "keyword", "pattern": "failed"},
+                        {"match_type": "user_id", "pattern": "@bob:example.org"},
+                    ],
                 },
                 FakeEvent(message_text="deploy passed", is_native_wake=False),
                 [],
             ),
             (
-                "a_or_b_or_c",
+                "any_rule",
                 {
-                    "condition_a": {"match_type": "keyword", "pattern": "failed"},
-                    "condition_b": {
-                        "match_type": "group_id",
-                        "pattern": "!other:example.org",
-                    },
-                    "condition_c": {
-                        "match_type": "message_type",
-                        "pattern": "group",
-                    },
+                    "conditions": [
+                        {"match_type": "keyword", "pattern": "failed"},
+                        {"match_type": "group_id", "pattern": "!other:example.org"},
+                        {"match_type": "message_type", "pattern": "group"},
+                    ],
                 },
                 FakeEvent(message_text="deploy passed", is_native_wake=False),
                 ["🅰️"],
             ),
             (
-                "a_and_b_and_c",
+                "all_rule",
                 {
-                    "condition_a": {"match_type": "keyword", "pattern": "deploy"},
-                    "condition_b": {
-                        "match_type": "user_id",
-                        "pattern": "@alice:example.org",
-                    },
-                    "condition_c": {
-                        "match_type": "group_id",
-                        "pattern": "!room:example.org",
-                    },
+                    "conditions": [
+                        {"match_type": "keyword", "pattern": "deploy"},
+                        {"match_type": "user_id", "pattern": "@alice:example.org"},
+                        {"match_type": "group_id", "pattern": "!room:example.org"},
+                    ],
                 },
                 FakeEvent(message_text="deploy passed", is_native_wake=False),
                 ["🅰️"],
             ),
             (
-                "a_and_b_and_c",
+                "all_rule",
                 {
-                    "condition_a": {"match_type": "keyword", "pattern": "deploy"},
-                    "condition_b": {
-                        "match_type": "user_id",
-                        "pattern": "@alice:example.org",
-                    },
-                    "condition_c": {
-                        "match_type": "group_id",
-                        "pattern": "!other:example.org",
-                    },
+                    "conditions": [
+                        {"match_type": "keyword", "pattern": "deploy"},
+                        {"match_type": "user_id", "pattern": "@alice:example.org"},
+                        {"match_type": "group_id", "pattern": "!other:example.org"},
+                    ],
                 },
                 FakeEvent(message_text="deploy passed", is_native_wake=False),
                 [],
@@ -606,7 +592,7 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
                     "enable": True,
                     "rules": [
                         {
-                            "__template_key": "reaction_rule",
+                            "__template_key": "any_rule",
                             "selection": "fixed",
                             "reactions": ["🟢"],
                             "match_mode": "any",
@@ -708,7 +694,7 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
         remove_results = [result async for result in plugin.remove_rule(event, 1)]
 
         self.assertIn("已添加规则 #1", add_results[0])
-        self.assertEqual(added_rule["__template_key"], "reaction_rule")
+        self.assertEqual(added_rule["__template_key"], "all_rule")
         self.assertEqual(added_rule["match_mode"], "all")
         self.assertEqual(
             added_rule["conditions"],
@@ -1143,7 +1129,7 @@ class PluginFileTests(unittest.TestCase):
         metadata = PluginManager._load_plugin_metadata(str(plugin_root))
 
         self.assertIsNotNone(metadata)
-        self.assertEqual(metadata.version, "0.5.1")
+        self.assertEqual(metadata.version, "0.6.0")
         self.assertEqual(metadata.support_platforms, ["matrix"])
 
     def test_schema_defaults_are_safe(self) -> None:
@@ -1158,50 +1144,35 @@ class PluginFileTests(unittest.TestCase):
         self.assertEqual(config_items["rules"]["default"], [])
         templates = config_items["rules"]["templates"]
         expected_templates = {
-            "single_rule": ("all", ("condition_a",)),
-            "a_and_b": ("all", ("condition_a", "condition_b")),
-            "a_or_b": ("any", ("condition_a", "condition_b")),
-            "a_or_b_or_c": (
-                "any",
-                ("condition_a", "condition_b", "condition_c"),
-            ),
-            "a_and_b_and_c": (
-                "all",
-                ("condition_a", "condition_b", "condition_c"),
-            ),
+            "all_rule": "all",
+            "any_rule": "any",
         }
-        for template_key, (match_mode, condition_keys) in expected_templates.items():
+        condition_options = [
+            "keyword",
+            "regex",
+            "user_id",
+            "bot_id",
+            "group_id",
+            "message_type",
+            "not_keyword",
+            "not_regex",
+            "not_user_id",
+            "not_bot_id",
+            "not_group_id",
+            "not_message_type",
+        ]
+        for template_key, match_mode in expected_templates.items():
             with self.subTest(template_key=template_key):
                 rule_items = templates[template_key]["items"]
                 self.assertEqual(rule_items["match_mode"]["default"], match_mode)
-                for condition_key in condition_keys:
-                    self.assertEqual(rule_items[condition_key]["type"], "object")
-                    self.assertEqual(
-                        rule_items[condition_key]["items"]["match_type"]["options"],
-                        [
-                            "keyword",
-                            "regex",
-                            "user_id",
-                            "bot_id",
-                            "group_id",
-                            "message_type",
-                        ],
-                    )
-
-        rule_items = templates["reaction_rule"]["items"]
-        self.assertEqual(rule_items["conditions"]["type"], "template_list")
-        self.assertFalse(rule_items["conditions"]["invisible"])
-        self.assertEqual(
-            rule_items["conditions"]["templates"]["condition"]["items"]["match_type"]["options"],
-            [
-                "keyword",
-                "regex",
-                "user_id",
-                "bot_id",
-                "group_id",
-                "message_type",
-            ],
-        )
+                self.assertEqual(rule_items["conditions"]["type"], "template_list")
+                self.assertFalse(rule_items["conditions"]["invisible"])
+                self.assertEqual(
+                    rule_items["conditions"]["templates"]["condition"]["items"][
+                        "match_type"
+                    ]["options"],
+                    condition_options,
+                )
 
 
 if __name__ == "__main__":

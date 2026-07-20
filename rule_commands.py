@@ -85,7 +85,7 @@ class MatrixRuleReactCommandMixin:
             raw_rules = []
 
         rule = {
-            "__template_key": "reaction_rule",
+            "__template_key": "all_rule",
             "selection": normalized_selection,
             "reactions": reaction_keys,
             "match_mode": "all",

@@ -16,6 +16,8 @@ MATCH_TYPES = frozenset(
         "message_type",
     }
 )
+NEGATED_MATCH_TYPES = frozenset(f"not_{match_type}" for match_type in MATCH_TYPES)
+ALL_MATCH_TYPES = MATCH_TYPES | NEGATED_MATCH_TYPES
 MATCH_TYPE_ALIASES = {
     "user": "user_id",
     "userid": "user_id",
@@ -25,6 +27,14 @@ MATCH_TYPE_ALIASES = {
     "groupid": "group_id",
     "message": "message_type",
     "msg_type": "message_type",
+    "not_user": "not_user_id",
+    "not_userid": "not_user_id",
+    "not_bot": "not_bot_id",
+    "not_botid": "not_bot_id",
+    "not_group": "not_group_id",
+    "not_groupid": "not_group_id",
+    "not_message": "not_message_type",
+    "not_msg_type": "not_message_type",
 }
 MESSAGE_TYPE_ALIASES = {
     "group": "group",
@@ -42,18 +52,17 @@ MESSAGE_TYPE_ALIASES = {
     "other_message": "other",
 }
 RULE_TEMPLATE_DEFINITIONS = {
-    "single_rule": ("all", ("condition_a",)),
-    "a_and_b": ("all", ("condition_a", "condition_b")),
-    "a_or_b": ("any", ("condition_a", "condition_b")),
-    "a_or_b_or_c": ("any", ("condition_a", "condition_b", "condition_c")),
-    "a_and_b_and_c": ("all", ("condition_a", "condition_b", "condition_c")),
+    "all_rule": ("all", "conditions"),
+    "any_rule": ("any", "conditions"),
 }
 MATCH_MODE_ALIASES = {
     "and": "all",
     "or": "any",
+    "all": "all",
+    "any": "any",
 }
 _CONDITION_MARKER_PATTERN = re.compile(
-    rf"(?<!\S)(?:{'|'.join(sorted(MATCH_TYPES, key=len, reverse=True))})(?=\s|$)",
+    rf"(?<!\S)(?:{'|'.join(sorted(ALL_MATCH_TYPES, key=len, reverse=True))})(?=\s|$)",
     re.IGNORECASE,
 )
 
@@ -150,8 +159,8 @@ def parse_conditions(value: object) -> list[dict[str, str]]:
         matches = list(_CONDITION_MARKER_PATTERN.finditer("".join(masked_value)))
         if not matches or raw_value[: matches[0].start()].strip():
             raise ValueError(
-                "匹配条件必须以 keyword、regex、user_id、bot_id、group_id "
-                "或 message_type 开始。"
+                "匹配条件必须以 keyword、regex、user_id、bot_id、group_id、"
+                "message_type 或其 not_ 反义变种开始。"
             )
         raw_conditions = []
         for index, current in enumerate(matches):
@@ -167,14 +176,14 @@ def parse_conditions(value: object) -> list[dict[str, str]]:
         parts = raw_condition.split(maxsplit=1)
         match_type = str(parts[0] or "").strip().lower()
         match_type = MATCH_TYPE_ALIASES.get(match_type, match_type)
-        if match_type not in MATCH_TYPES:
+        if match_type not in ALL_MATCH_TYPES:
             raise ValueError(f"规则类型无效：{parts[0]}。")
         pattern = parts[1].strip() if len(parts) > 1 else ""
         if len(pattern) >= 2 and pattern[0] == pattern[-1] and pattern[0] in {'"', "'"}:
             pattern = pattern[1:-1].strip()
         if not pattern:
             raise ValueError(f"{match_type} 的匹配内容不能为空。")
-        if match_type == "regex":
+        if match_type in {"regex", "not_regex"}:
             try:
                 re.compile(pattern)
             except re.error as exc:
@@ -198,12 +207,9 @@ def normalize_rule_conditions(raw_rule: dict) -> list[dict[str, str]] | None:
     template_key = str(raw_rule.get("__template_key") or "").strip()
     template_definition = RULE_TEMPLATE_DEFINITIONS.get(template_key)
     if template_definition:
-        raw_conditions = []
-        for condition_key in template_definition[1]:
-            raw_condition = raw_rule.get(condition_key)
-            if not isinstance(raw_condition, dict):
-                return None
-            raw_conditions.append(raw_condition)
+        raw_conditions = raw_rule.get(template_definition[1])
+        if not isinstance(raw_conditions, list) or not raw_conditions:
+            return None
     else:
         raw_conditions = raw_rule.get("conditions")
         if not isinstance(raw_conditions, list) or not raw_conditions:
@@ -235,7 +241,7 @@ def normalize_rule_conditions(raw_rule: dict) -> list[dict[str, str]] | None:
         pattern = str(
             raw_condition.get("pattern", raw_condition.get("value")) or ""
         ).strip()
-        if match_type not in MATCH_TYPES or not pattern:
+        if match_type not in ALL_MATCH_TYPES or not pattern:
             return None
         conditions.append({"match_type": match_type, "pattern": pattern})
 
@@ -406,32 +412,35 @@ def select_dynamic_reaction(event: AstrMessageEvent, raw_rules: object) -> str:
         matched = match_mode == "all"
         for condition in conditions:
             match_type = condition["match_type"]
+            negated = match_type.startswith("not_")
+            base_type = match_type[4:] if negated else match_type
             pattern = condition["pattern"]
-            if match_type == "keyword":
-                condition_matches = pattern in message_text
-            elif match_type == "user_id":
-                condition_matches = pattern == sender_id
-            elif match_type == "bot_id":
-                condition_matches = pattern == bot_id
-            elif match_type == "group_id":
-                condition_matches = pattern == group_id
-            elif match_type == "message_type":
+            if base_type == "keyword":
+                base_matches = pattern in message_text
+            elif base_type == "user_id":
+                base_matches = pattern == sender_id
+            elif base_type == "bot_id":
+                base_matches = pattern == bot_id
+            elif base_type == "group_id":
+                base_matches = pattern == group_id
+            elif base_type == "message_type":
                 normalized_pattern = pattern.lower().replace("-", "_")
                 normalized_pattern = MESSAGE_TYPE_ALIASES.get(
                     normalized_pattern,
                     normalized_pattern,
                 )
-                condition_matches = normalized_pattern in message_types
+                base_matches = normalized_pattern in message_types
             else:
                 try:
-                    condition_matches = re.search(pattern, message_text) is not None
+                    base_matches = re.search(pattern, message_text) is not None
                 except re.error as exc:
                     logger.debug(
                         "Skipping invalid Matrix reaction regex %r: %s",
                         pattern,
                         exc,
                     )
-                    condition_matches = False
+                    base_matches = False
+            condition_matches = not base_matches if negated else base_matches
             if match_mode == "all" and not condition_matches:
                 matched = False
                 break
