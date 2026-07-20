@@ -1144,6 +1144,7 @@ class PluginFileTests(unittest.TestCase):
         self.assertEqual(config_items["rules"]["default"], [])
         templates = config_items["rules"]["templates"]
         expected_templates = {
+            "single_rule": "all",
             "all_rule": "all",
             "any_rule": "any",
         }
