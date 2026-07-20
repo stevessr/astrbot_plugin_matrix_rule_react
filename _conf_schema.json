@@ -64,51 +64,36 @@
                 "default": "all",
                 "invisible": true
               },
-              "conditions": {
+              "condition": {
                 "description": "匹配条件",
-                "type": "template_list",
-                "hint": "在下方添加条件，每个条件需选择匹配类型并填写匹配内容；可使用 not_ 前缀表示反义（未发现）",
-                "invisible": false,
-                "templates": {
-                  "condition": {
-                    "name": "匹配条件",
-                    "hint": "一个匹配条件，包含类型和内容；支持 not_ 前缀表示未发现",
-                    "items": {
-                      "match_type": {
-                        "description": "匹配类型",
-                        "type": "string",
-                        "options": [
-                          "keyword",
-                          "regex",
-                          "user_id",
-                          "bot_id",
-                          "group_id",
-                          "message_type",
-                          "not_keyword",
-                          "not_regex",
-                          "not_user_id",
-                          "not_bot_id",
-                          "not_group_id",
-                          "not_message_type"
-                        ],
-                        "default": "keyword"
-                      },
-                      "pattern": {
-                        "description": "匹配内容",
-                        "type": "string",
-                        "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
-                        "default": ""
-                      }
-                    }
+                "type": "object",
+                "items": {
+                  "match_type": {
+                    "description": "匹配类型",
+                    "type": "string",
+                    "options": [
+                      "keyword",
+                      "regex",
+                      "user_id",
+                      "bot_id",
+                      "group_id",
+                      "message_type",
+                      "not_keyword",
+                      "not_regex",
+                      "not_user_id",
+                      "not_bot_id",
+                      "not_group_id",
+                      "not_message_type"
+                    ],
+                    "default": "keyword"
+                  },
+                  "pattern": {
+                    "description": "匹配内容",
+                    "type": "string",
+                    "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
+                    "default": ""
                   }
-                },
-                "default": [
-                  {
-                    "__template_key": "condition",
-                    "match_type": "keyword",
-                    "pattern": ""
-                  }
-                ]
+                }
               }
             }
           },

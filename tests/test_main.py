@@ -1168,13 +1168,19 @@ class PluginFileTests(unittest.TestCase):
             with self.subTest(template_key=template_key):
                 rule_items = templates[template_key]["items"]
                 self.assertEqual(rule_items["match_mode"]["default"], match_mode)
-                if template_key in {"single_rule", "all_rule", "any_rule"}:
+                if template_key in {"all_rule", "any_rule"}:
                     self.assertEqual(rule_items["conditions"]["type"], "template_list")
                     self.assertFalse(rule_items["conditions"]["invisible"])
                     self.assertEqual(
                         rule_items["conditions"]["templates"]["condition"]["items"][
                             "match_type"
                         ]["options"],
+                        condition_options,
+                    )
+                elif template_key == "single_rule":
+                    self.assertEqual(rule_items["condition"]["type"], "object")
+                    self.assertEqual(
+                        rule_items["condition"]["items"]["match_type"]["options"],
                         condition_options,
                     )
                 else:
