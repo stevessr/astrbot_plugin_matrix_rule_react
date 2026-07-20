@@ -505,7 +505,7 @@
                 "description": "匹配条件数组",
                 "type": "list",
                 "hint": "由 /matrix rules react add 管理，可在条件关系中选择 AND 或 OR",
-                "invisible": true,
+                "invisible": false,
                 "items": {
                   "match_type": {
                     "description": "匹配类型",
