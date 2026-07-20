@@ -40,7 +40,7 @@
               },
               "conditions": {
                 "description": "匹配条件数组",
-                "type": "list",
+                "type": "template_list",
                 "hint": "所有条件均匹配时规则才生效；通过 /matrix rules react add 管理",
                 "invisible": false,
                 "items": {
