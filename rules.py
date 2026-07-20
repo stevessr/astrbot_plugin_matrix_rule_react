@@ -53,8 +53,8 @@ MESSAGE_TYPE_ALIASES = {
 }
 RULE_TEMPLATE_DEFINITIONS = {
     "single_rule": ("all", "conditions"),
-    "a_and_b": ("all", "conditions"),
-    "a_or_b": ("any", "conditions"),
+    "a_and_b": ("all", ("condition_a", "condition_b")),
+    "a_or_b": ("any", ("condition_a", "condition_b")),
     "all_rule": ("all", "conditions"),
     "any_rule": ("any", "conditions"),
 }
@@ -210,9 +210,18 @@ def normalize_rule_conditions(raw_rule: dict) -> list[dict[str, str]] | None:
     template_key = str(raw_rule.get("__template_key") or "").strip()
     template_definition = RULE_TEMPLATE_DEFINITIONS.get(template_key)
     if template_definition:
-        raw_conditions = raw_rule.get(template_definition[1])
-        if not isinstance(raw_conditions, list) or not raw_conditions:
-            return None
+        condition_keys = template_definition[1]
+        if isinstance(condition_keys, str):
+            raw_conditions = raw_rule.get(condition_keys)
+            if not isinstance(raw_conditions, list) or not raw_conditions:
+                return None
+        else:
+            raw_conditions = []
+            for condition_key in condition_keys:
+                raw_condition = raw_rule.get(condition_key)
+                if not isinstance(raw_condition, dict):
+                    return None
+                raw_conditions.append(raw_condition)
     else:
         raw_conditions = raw_rule.get("conditions")
         if not isinstance(raw_conditions, list) or not raw_conditions:
