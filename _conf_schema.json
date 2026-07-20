@@ -6,43 +6,506 @@
       "enable": {
         "description": "启用条件 Reaction",
         "type": "bool",
-        "hint": "收到 @机器人或 AstrBot 确认有效的唤醒前缀消息时发送 reaction",
+        "hint": "收到动态规则匹配消息，或 @机器人、AstrBot 确认有效的唤醒前缀消息时发送 reaction",
         "default": false
       },
       "emojis": {
         "description": "React 列表",
         "type": "list",
-        "items": { "type": "string" },
+        "items": {
+          "type": "string"
+        },
         "hint": "例如 ['👍', '🤔', '✍️']；会忽略空值和重复项，也支持 mxc:// reaction key",
-        "default": ["🤗", "🐟", "🍞"]
+        "default": [
+          "🤗",
+          "🐟",
+          "🍞"
+        ]
       },
       "rules": {
         "description": "动态 Reaction 规则",
         "type": "template_list",
-        "hint": "按列表顺序匹配，首个匹配的规则生效；可通过 /matrix rules react 管理",
+        "hint": "按列表顺序匹配，首个匹配的规则生效；可选择 A、AND、OR 简单模板，也可通过 /matrix rules react 管理",
         "default": [],
         "templates": {
-          "reaction_rule": {
-            "name": "Matrix Reaction Rule",
+          "single_rule": {
+            "name": "单条件（A）",
+            "hint": "仅条件 A 命中时生效",
             "items": {
               "selection": {
                 "description": "Reaction 选取模式",
                 "type": "string",
-                "options": ["fixed", "random"],
+                "options": [
+                  "fixed",
+                  "random"
+                ],
                 "default": "fixed"
               },
               "reactions": {
                 "description": "Reaction 列表",
                 "type": "list",
-                "items": { "type": "string" },
+                "items": {
+                  "type": "string"
+                },
                 "hint": "fixed 模式使用第一项，random 模式随机选取",
-                "default": ["👍"]
+                "default": [
+                  "👍"
+                ]
+              },
+              "match_mode": {
+                "description": "条件关系",
+                "type": "string",
+                "default": "all",
+                "invisible": true
+              },
+              "condition_a": {
+                "description": "条件 A",
+                "type": "object",
+                "items": {
+                  "match_type": {
+                    "description": "匹配类型",
+                    "type": "string",
+                    "options": [
+                      "keyword",
+                      "regex",
+                      "user_id",
+                      "bot_id",
+                      "group_id",
+                      "message_type"
+                    ],
+                    "default": "keyword"
+                  },
+                  "pattern": {
+                    "description": "匹配内容",
+                    "type": "string",
+                    "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
+                    "default": ""
+                  }
+                }
+              }
+            }
+          },
+          "a_and_b": {
+            "name": "全部匹配（A AND B）",
+            "hint": "条件 A 和 B 都命中时生效",
+            "items": {
+              "selection": {
+                "description": "Reaction 选取模式",
+                "type": "string",
+                "options": [
+                  "fixed",
+                  "random"
+                ],
+                "default": "fixed"
+              },
+              "reactions": {
+                "description": "Reaction 列表",
+                "type": "list",
+                "items": {
+                  "type": "string"
+                },
+                "hint": "fixed 模式使用第一项，random 模式随机选取",
+                "default": [
+                  "👍"
+                ]
+              },
+              "match_mode": {
+                "description": "条件关系",
+                "type": "string",
+                "default": "all",
+                "invisible": true
+              },
+              "condition_a": {
+                "description": "条件 A",
+                "type": "object",
+                "items": {
+                  "match_type": {
+                    "description": "匹配类型",
+                    "type": "string",
+                    "options": [
+                      "keyword",
+                      "regex",
+                      "user_id",
+                      "bot_id",
+                      "group_id",
+                      "message_type"
+                    ],
+                    "default": "keyword"
+                  },
+                  "pattern": {
+                    "description": "匹配内容",
+                    "type": "string",
+                    "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
+                    "default": ""
+                  }
+                }
+              },
+              "condition_b": {
+                "description": "条件 B",
+                "type": "object",
+                "items": {
+                  "match_type": {
+                    "description": "匹配类型",
+                    "type": "string",
+                    "options": [
+                      "keyword",
+                      "regex",
+                      "user_id",
+                      "bot_id",
+                      "group_id",
+                      "message_type"
+                    ],
+                    "default": "keyword"
+                  },
+                  "pattern": {
+                    "description": "匹配内容",
+                    "type": "string",
+                    "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
+                    "default": ""
+                  }
+                }
+              }
+            }
+          },
+          "a_or_b": {
+            "name": "任一匹配（A OR B）",
+            "hint": "条件 A 或 B 任一命中时生效",
+            "items": {
+              "selection": {
+                "description": "Reaction 选取模式",
+                "type": "string",
+                "options": [
+                  "fixed",
+                  "random"
+                ],
+                "default": "fixed"
+              },
+              "reactions": {
+                "description": "Reaction 列表",
+                "type": "list",
+                "items": {
+                  "type": "string"
+                },
+                "hint": "fixed 模式使用第一项，random 模式随机选取",
+                "default": [
+                  "👍"
+                ]
+              },
+              "match_mode": {
+                "description": "条件关系",
+                "type": "string",
+                "default": "any",
+                "invisible": true
+              },
+              "condition_a": {
+                "description": "条件 A",
+                "type": "object",
+                "items": {
+                  "match_type": {
+                    "description": "匹配类型",
+                    "type": "string",
+                    "options": [
+                      "keyword",
+                      "regex",
+                      "user_id",
+                      "bot_id",
+                      "group_id",
+                      "message_type"
+                    ],
+                    "default": "keyword"
+                  },
+                  "pattern": {
+                    "description": "匹配内容",
+                    "type": "string",
+                    "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
+                    "default": ""
+                  }
+                }
+              },
+              "condition_b": {
+                "description": "条件 B",
+                "type": "object",
+                "items": {
+                  "match_type": {
+                    "description": "匹配类型",
+                    "type": "string",
+                    "options": [
+                      "keyword",
+                      "regex",
+                      "user_id",
+                      "bot_id",
+                      "group_id",
+                      "message_type"
+                    ],
+                    "default": "keyword"
+                  },
+                  "pattern": {
+                    "description": "匹配内容",
+                    "type": "string",
+                    "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
+                    "default": ""
+                  }
+                }
+              }
+            }
+          },
+          "a_or_b_or_c": {
+            "name": "任一匹配（A OR B OR C）",
+            "hint": "条件 A、B 或 C 任一命中时生效",
+            "items": {
+              "selection": {
+                "description": "Reaction 选取模式",
+                "type": "string",
+                "options": [
+                  "fixed",
+                  "random"
+                ],
+                "default": "fixed"
+              },
+              "reactions": {
+                "description": "Reaction 列表",
+                "type": "list",
+                "items": {
+                  "type": "string"
+                },
+                "hint": "fixed 模式使用第一项，random 模式随机选取",
+                "default": [
+                  "👍"
+                ]
+              },
+              "match_mode": {
+                "description": "条件关系",
+                "type": "string",
+                "default": "any",
+                "invisible": true
+              },
+              "condition_a": {
+                "description": "条件 A",
+                "type": "object",
+                "items": {
+                  "match_type": {
+                    "description": "匹配类型",
+                    "type": "string",
+                    "options": [
+                      "keyword",
+                      "regex",
+                      "user_id",
+                      "bot_id",
+                      "group_id",
+                      "message_type"
+                    ],
+                    "default": "keyword"
+                  },
+                  "pattern": {
+                    "description": "匹配内容",
+                    "type": "string",
+                    "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
+                    "default": ""
+                  }
+                }
+              },
+              "condition_b": {
+                "description": "条件 B",
+                "type": "object",
+                "items": {
+                  "match_type": {
+                    "description": "匹配类型",
+                    "type": "string",
+                    "options": [
+                      "keyword",
+                      "regex",
+                      "user_id",
+                      "bot_id",
+                      "group_id",
+                      "message_type"
+                    ],
+                    "default": "keyword"
+                  },
+                  "pattern": {
+                    "description": "匹配内容",
+                    "type": "string",
+                    "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
+                    "default": ""
+                  }
+                }
+              },
+              "condition_c": {
+                "description": "条件 C",
+                "type": "object",
+                "items": {
+                  "match_type": {
+                    "description": "匹配类型",
+                    "type": "string",
+                    "options": [
+                      "keyword",
+                      "regex",
+                      "user_id",
+                      "bot_id",
+                      "group_id",
+                      "message_type"
+                    ],
+                    "default": "keyword"
+                  },
+                  "pattern": {
+                    "description": "匹配内容",
+                    "type": "string",
+                    "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
+                    "default": ""
+                  }
+                }
+              }
+            }
+          },
+          "a_and_b_and_c": {
+            "name": "全部匹配（A AND B AND C）",
+            "hint": "条件 A、B 和 C 都命中时生效",
+            "items": {
+              "selection": {
+                "description": "Reaction 选取模式",
+                "type": "string",
+                "options": [
+                  "fixed",
+                  "random"
+                ],
+                "default": "fixed"
+              },
+              "reactions": {
+                "description": "Reaction 列表",
+                "type": "list",
+                "items": {
+                  "type": "string"
+                },
+                "hint": "fixed 模式使用第一项，random 模式随机选取",
+                "default": [
+                  "👍"
+                ]
+              },
+              "match_mode": {
+                "description": "条件关系",
+                "type": "string",
+                "default": "all",
+                "invisible": true
+              },
+              "condition_a": {
+                "description": "条件 A",
+                "type": "object",
+                "items": {
+                  "match_type": {
+                    "description": "匹配类型",
+                    "type": "string",
+                    "options": [
+                      "keyword",
+                      "regex",
+                      "user_id",
+                      "bot_id",
+                      "group_id",
+                      "message_type"
+                    ],
+                    "default": "keyword"
+                  },
+                  "pattern": {
+                    "description": "匹配内容",
+                    "type": "string",
+                    "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
+                    "default": ""
+                  }
+                }
+              },
+              "condition_b": {
+                "description": "条件 B",
+                "type": "object",
+                "items": {
+                  "match_type": {
+                    "description": "匹配类型",
+                    "type": "string",
+                    "options": [
+                      "keyword",
+                      "regex",
+                      "user_id",
+                      "bot_id",
+                      "group_id",
+                      "message_type"
+                    ],
+                    "default": "keyword"
+                  },
+                  "pattern": {
+                    "description": "匹配内容",
+                    "type": "string",
+                    "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
+                    "default": ""
+                  }
+                }
+              },
+              "condition_c": {
+                "description": "条件 C",
+                "type": "object",
+                "items": {
+                  "match_type": {
+                    "description": "匹配类型",
+                    "type": "string",
+                    "options": [
+                      "keyword",
+                      "regex",
+                      "user_id",
+                      "bot_id",
+                      "group_id",
+                      "message_type"
+                    ],
+                    "default": "keyword"
+                  },
+                  "pattern": {
+                    "description": "匹配内容",
+                    "type": "string",
+                    "hint": "关键字、正则、用户/机器人/群组 ID 或消息类型",
+                    "default": ""
+                  }
+                }
+              }
+            }
+          },
+          "reaction_rule": {
+            "name": "高级多条件（指令管理）",
+            "hint": "由 /matrix rules react add 创建，支持任意数量的条件",
+            "items": {
+              "selection": {
+                "description": "Reaction 选取模式",
+                "type": "string",
+                "options": [
+                  "fixed",
+                  "random"
+                ],
+                "default": "fixed"
+              },
+              "reactions": {
+                "description": "Reaction 列表",
+                "type": "list",
+                "items": {
+                  "type": "string"
+                },
+                "hint": "fixed 模式使用第一项，random 模式随机选取",
+                "default": [
+                  "👍"
+                ]
+              },
+              "match_mode": {
+                "description": "条件关系",
+                "type": "string",
+                "default": "all",
+                "invisible": false,
+                "options": [
+                  "all",
+                  "any"
+                ],
+                "labels": [
+                  "AND（全部匹配）",
+                  "OR（任一匹配）"
+                ]
               },
               "conditions": {
                 "description": "匹配条件数组",
-                "type": "template_list",
-                "hint": "所有条件均匹配时规则才生效；通过 /matrix rules react add 管理",
-                "invisible": false,
+                "type": "list",
+                "hint": "由 /matrix rules react add 管理，可在条件关系中选择 AND 或 OR",
+                "invisible": true,
                 "items": {
                   "match_type": {
                     "description": "匹配类型",

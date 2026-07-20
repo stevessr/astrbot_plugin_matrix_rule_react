@@ -452,6 +452,163 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(matching_event.reactions, ["✅"])
         self.assertEqual(wrong_group_event.reactions, [])
 
+    async def test_simple_rule_templates_apply_boolean_semantics(self) -> None:
+        """The five dashboard templates should implement their named relations."""
+        template_cases = [
+            (
+                "single_rule",
+                {
+                    "condition_a": {"match_type": "keyword", "pattern": "deploy"},
+                },
+                FakeEvent(message_text="deploy passed", is_native_wake=False),
+                ["🅰️"],
+            ),
+            (
+                "a_and_b",
+                {
+                    "condition_a": {"match_type": "keyword", "pattern": "deploy"},
+                    "condition_b": {
+                        "match_type": "user_id",
+                        "pattern": "@alice:example.org",
+                    },
+                },
+                FakeEvent(message_text="deploy passed", is_native_wake=False),
+                ["🅰️"],
+            ),
+            (
+                "a_and_b",
+                {
+                    "condition_a": {"match_type": "keyword", "pattern": "deploy"},
+                    "condition_b": {
+                        "match_type": "user_id",
+                        "pattern": "@bob:example.org",
+                    },
+                },
+                FakeEvent(message_text="deploy passed", is_native_wake=False),
+                [],
+            ),
+            (
+                "a_or_b",
+                {
+                    "condition_a": {"match_type": "keyword", "pattern": "failed"},
+                    "condition_b": {
+                        "match_type": "user_id",
+                        "pattern": "@alice:example.org",
+                    },
+                },
+                FakeEvent(message_text="deploy passed", is_native_wake=False),
+                ["🅰️"],
+            ),
+            (
+                "a_or_b",
+                {
+                    "condition_a": {"match_type": "keyword", "pattern": "failed"},
+                    "condition_b": {
+                        "match_type": "user_id",
+                        "pattern": "@bob:example.org",
+                    },
+                },
+                FakeEvent(message_text="deploy passed", is_native_wake=False),
+                [],
+            ),
+            (
+                "a_or_b_or_c",
+                {
+                    "condition_a": {"match_type": "keyword", "pattern": "failed"},
+                    "condition_b": {
+                        "match_type": "group_id",
+                        "pattern": "!other:example.org",
+                    },
+                    "condition_c": {
+                        "match_type": "message_type",
+                        "pattern": "group",
+                    },
+                },
+                FakeEvent(message_text="deploy passed", is_native_wake=False),
+                ["🅰️"],
+            ),
+            (
+                "a_and_b_and_c",
+                {
+                    "condition_a": {"match_type": "keyword", "pattern": "deploy"},
+                    "condition_b": {
+                        "match_type": "user_id",
+                        "pattern": "@alice:example.org",
+                    },
+                    "condition_c": {
+                        "match_type": "group_id",
+                        "pattern": "!room:example.org",
+                    },
+                },
+                FakeEvent(message_text="deploy passed", is_native_wake=False),
+                ["🅰️"],
+            ),
+            (
+                "a_and_b_and_c",
+                {
+                    "condition_a": {"match_type": "keyword", "pattern": "deploy"},
+                    "condition_b": {
+                        "match_type": "user_id",
+                        "pattern": "@alice:example.org",
+                    },
+                    "condition_c": {
+                        "match_type": "group_id",
+                        "pattern": "!other:example.org",
+                    },
+                },
+                FakeEvent(message_text="deploy passed", is_native_wake=False),
+                [],
+            ),
+        ]
+
+        for template_key, conditions, event, expected_reactions in template_cases:
+            with self.subTest(template_key=template_key, expected=expected_reactions):
+                rule = {
+                    "__template_key": template_key,
+                    "selection": "fixed",
+                    "reactions": ["🅰️"],
+                    **conditions,
+                }
+                plugin = self.make_plugin(
+                    {"matrix_rule_react": {"enable": True, "rules": [rule]}}
+                )
+
+                await plugin.on_message(event)
+
+                self.assertEqual(event.reactions, expected_reactions)
+
+    async def test_custom_condition_array_supports_or_mode(self) -> None:
+        """An advanced rule may explicitly combine its condition array with OR."""
+        plugin = self.make_plugin(
+            {
+                "matrix_rule_react": {
+                    "enable": True,
+                    "rules": [
+                        {
+                            "__template_key": "reaction_rule",
+                            "selection": "fixed",
+                            "reactions": ["🟢"],
+                            "match_mode": "any",
+                            "conditions": [
+                                {"match_type": "keyword", "pattern": "failed"},
+                                {
+                                    "match_type": "user_id",
+                                    "pattern": "@alice:example.org",
+                                },
+                            ],
+                        }
+                    ],
+                }
+            }
+        )
+        event = FakeEvent(message_text="deploy passed", is_native_wake=False)
+
+        await plugin.on_message(event)
+        list_results = [result async for result in plugin.list_rules(event)]
+
+        self.assertEqual(event.reactions, ["🟢"])
+        self.assertIn(" OR ", list_results[0])
+
     async def test_message_type_accepts_matrix_native_msgtype(self) -> None:
         """A message-type condition may target Matrix's native ``msgtype``."""
         plugin = self.make_plugin(
@@ -531,6 +688,7 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("已添加规则 #1", add_results[0])
         self.assertEqual(added_rule["__template_key"], "reaction_rule")
+        self.assertEqual(added_rule["match_mode"], "all")
         self.assertEqual(
             added_rule["conditions"],
             [
@@ -541,6 +699,7 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("[random]", list_results[0])
         self.assertIn("user_id='@alice:example.org'", list_results[0])
         self.assertIn("group_id='!room:example.org'", list_results[0])
+        self.assertIn(" AND ", list_results[0])
         self.assertIn("已移除规则 #1", remove_results[0])
         self.assertEqual(config["matrix_rule_react"]["rules"], [])
         self.assertEqual(config.save_count, 2)
@@ -786,7 +945,7 @@ class PluginFileTests(unittest.TestCase):
         metadata = PluginManager._load_plugin_metadata(str(plugin_root))
 
         self.assertIsNotNone(metadata)
-        self.assertEqual(metadata.version, "0.4.0")
+        self.assertEqual(metadata.version, "0.5.0")
         self.assertEqual(metadata.support_platforms, ["matrix"])
 
     def test_schema_defaults_are_safe(self) -> None:
@@ -799,8 +958,41 @@ class PluginFileTests(unittest.TestCase):
         self.assertTrue(config_items["emojis"]["default"])
         self.assertEqual(config_items["rules"]["type"], "template_list")
         self.assertEqual(config_items["rules"]["default"], [])
-        rule_items = config_items["rules"]["templates"]["reaction_rule"]["items"]
+        templates = config_items["rules"]["templates"]
+        expected_templates = {
+            "single_rule": ("all", ("condition_a",)),
+            "a_and_b": ("all", ("condition_a", "condition_b")),
+            "a_or_b": ("any", ("condition_a", "condition_b")),
+            "a_or_b_or_c": (
+                "any",
+                ("condition_a", "condition_b", "condition_c"),
+            ),
+            "a_and_b_and_c": (
+                "all",
+                ("condition_a", "condition_b", "condition_c"),
+            ),
+        }
+        for template_key, (match_mode, condition_keys) in expected_templates.items():
+            with self.subTest(template_key=template_key):
+                rule_items = templates[template_key]["items"]
+                self.assertEqual(rule_items["match_mode"]["default"], match_mode)
+                for condition_key in condition_keys:
+                    self.assertEqual(rule_items[condition_key]["type"], "object")
+                    self.assertEqual(
+                        rule_items[condition_key]["items"]["match_type"]["options"],
+                        [
+                            "keyword",
+                            "regex",
+                            "user_id",
+                            "bot_id",
+                            "group_id",
+                            "message_type",
+                        ],
+                    )
+
+        rule_items = templates["reaction_rule"]["items"]
         self.assertEqual(rule_items["conditions"]["type"], "list")
+        self.assertTrue(rule_items["conditions"]["invisible"])
         self.assertEqual(
             rule_items["conditions"]["items"]["match_type"]["options"],
             [

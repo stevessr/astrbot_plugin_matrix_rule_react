@@ -3,7 +3,12 @@
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 
-from .rules import format_conditions, normalize_rule_conditions, parse_conditions
+from .rules import (
+    format_conditions,
+    normalize_rule_conditions,
+    normalize_rule_match_mode,
+    parse_conditions,
+)
 
 
 class MatrixRuleReactCommandMixin:
@@ -62,6 +67,7 @@ class MatrixRuleReactCommandMixin:
                 "__template_key": "reaction_rule",
                 "selection": normalized_selection,
                 "reactions": reaction_keys,
+                "match_mode": "all",
                 "conditions": conditions,
             }
         )
@@ -112,6 +118,7 @@ class MatrixRuleReactCommandMixin:
                     continue
                 selection = str(raw_rule.get("selection") or "")
                 conditions = normalize_rule_conditions(raw_rule)
+                match_mode = normalize_rule_match_mode(raw_rule)
                 raw_reactions = raw_rule.get("reactions", [])
                 if isinstance(raw_reactions, str):
                     raw_reactions = [raw_reactions]
@@ -124,7 +131,8 @@ class MatrixRuleReactCommandMixin:
                     lines.append(f"{index}. [无效规则] -> {reaction_text or '-'}")
                     continue
                 lines.append(
-                    f"{index}. [{selection}] {format_conditions(conditions)} "
+                    f"{index}. [{selection}] "
+                    f"{format_conditions(conditions, match_mode)} "
                     f"-> {reaction_text or '-'}"
                 )
         yield event.plain_result("\n".join(lines))
@@ -167,5 +175,12 @@ class MatrixRuleReactCommandMixin:
             if isinstance(removed_rule, dict)
             else None
         )
-        summary = format_conditions(conditions) if conditions else "[无效规则]"
+        match_mode = (
+            normalize_rule_match_mode(removed_rule)
+            if isinstance(removed_rule, dict)
+            else "all"
+        )
+        summary = (
+            format_conditions(conditions, match_mode) if conditions else "[无效规则]"
+        )
         yield event.plain_result(f"已移除规则 #{index}：{summary}")

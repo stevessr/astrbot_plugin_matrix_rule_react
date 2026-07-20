@@ -41,6 +41,17 @@ MESSAGE_TYPE_ALIASES = {
     "othermessage": "other",
     "other_message": "other",
 }
+RULE_TEMPLATE_DEFINITIONS = {
+    "single_rule": ("all", ("condition_a",)),
+    "a_and_b": ("all", ("condition_a", "condition_b")),
+    "a_or_b": ("any", ("condition_a", "condition_b")),
+    "a_or_b_or_c": ("any", ("condition_a", "condition_b", "condition_c")),
+    "a_and_b_and_c": ("all", ("condition_a", "condition_b", "condition_c")),
+}
+MATCH_MODE_ALIASES = {
+    "and": "all",
+    "or": "any",
+}
 _CONDITION_MARKER_PATTERN = re.compile(
     rf"(?<!\S)(?:{'|'.join(sorted(MATCH_TYPES, key=len, reverse=True))})(?=\s|$)",
     re.IGNORECASE,
@@ -176,7 +187,7 @@ def parse_conditions(value: object) -> list[dict[str, str]]:
 
 
 def normalize_rule_conditions(raw_rule: dict) -> list[dict[str, str]] | None:
-    """Normalize new multi-condition and legacy single-condition rules.
+    """Normalize simple templates, condition arrays, and legacy rules.
 
     Args:
         raw_rule: Persisted reaction rule from plugin configuration.
@@ -184,15 +195,25 @@ def normalize_rule_conditions(raw_rule: dict) -> list[dict[str, str]] | None:
     Returns:
         Normalized conditions, or ``None`` when the rule is invalid.
     """
-    raw_conditions = raw_rule.get("conditions")
-    if not isinstance(raw_conditions, list) or not raw_conditions:
-        legacy_type = raw_rule.get("match_type")
-        legacy_pattern = raw_rule.get("pattern")
-        if legacy_type is None and legacy_pattern is None:
-            return None
-        raw_conditions = [
-            {"match_type": legacy_type, "pattern": legacy_pattern},
-        ]
+    template_key = str(raw_rule.get("__template_key") or "").strip()
+    template_definition = RULE_TEMPLATE_DEFINITIONS.get(template_key)
+    if template_definition:
+        raw_conditions = []
+        for condition_key in template_definition[1]:
+            raw_condition = raw_rule.get(condition_key)
+            if not isinstance(raw_condition, dict):
+                return None
+            raw_conditions.append(raw_condition)
+    else:
+        raw_conditions = raw_rule.get("conditions")
+        if not isinstance(raw_conditions, list) or not raw_conditions:
+            legacy_type = raw_rule.get("match_type")
+            legacy_pattern = raw_rule.get("pattern")
+            if legacy_type is None and legacy_pattern is None:
+                return None
+            raw_conditions = [
+                {"match_type": legacy_type, "pattern": legacy_pattern},
+            ]
 
     conditions: list[dict[str, str]] = []
     for raw_condition in raw_conditions:
@@ -221,16 +242,41 @@ def normalize_rule_conditions(raw_rule: dict) -> list[dict[str, str]] | None:
     return conditions or None
 
 
-def format_conditions(conditions: list[dict[str, str]]) -> str:
+def normalize_rule_match_mode(raw_rule: dict) -> str:
+    """Return the ``all`` or ``any`` relation used by a persisted rule.
+
+    Simple template semantics are fixed by their template key. Custom and legacy
+    rules may provide ``all``/``and`` or ``any``/``or`` and safely default to
+    ``all``.
+
+    Args:
+        raw_rule: Persisted reaction rule from plugin configuration.
+
+    Returns:
+        ``all`` for AND semantics or ``any`` for OR semantics.
+    """
+    template_key = str(raw_rule.get("__template_key") or "").strip()
+    template_definition = RULE_TEMPLATE_DEFINITIONS.get(template_key)
+    if template_definition:
+        return template_definition[0]
+
+    match_mode = str(raw_rule.get("match_mode") or "all").strip().lower()
+    match_mode = MATCH_MODE_ALIASES.get(match_mode, match_mode)
+    return match_mode if match_mode in {"all", "any"} else "all"
+
+
+def format_conditions(conditions: list[dict[str, str]], match_mode: str = "all") -> str:
     """Format normalized conditions for command responses.
 
     Args:
         conditions: Normalized condition dictionaries.
+        match_mode: ``all`` for AND or ``any`` for OR.
 
     Returns:
-        A compact conjunction suitable for add, list, and remove results.
+        A compact expression suitable for add, list, and remove results.
     """
-    return " & ".join(
+    separator = " OR " if match_mode == "any" else " AND "
+    return separator.join(
         f"{condition['match_type']}={condition['pattern']!r}"
         for condition in conditions
     )
@@ -312,7 +358,8 @@ def select_dynamic_reaction(event: AstrMessageEvent, raw_rules: object) -> str:
         if not conditions or selection not in {"fixed", "random"} or not reactions:
             continue
 
-        matched = True
+        match_mode = normalize_rule_match_mode(raw_rule)
+        matched = match_mode == "all"
         for condition in conditions:
             match_type = condition["match_type"]
             pattern = condition["pattern"]
@@ -341,8 +388,11 @@ def select_dynamic_reaction(event: AstrMessageEvent, raw_rules: object) -> str:
                         exc,
                     )
                     condition_matches = False
-            if not condition_matches:
+            if match_mode == "all" and not condition_matches:
                 matched = False
+                break
+            if match_mode == "any" and condition_matches:
+                matched = True
                 break
 
         if matched:
