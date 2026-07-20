@@ -1145,6 +1145,8 @@ class PluginFileTests(unittest.TestCase):
         templates = config_items["rules"]["templates"]
         expected_templates = {
             "single_rule": "all",
+            "a_and_b": "all",
+            "a_or_b": "any",
             "all_rule": "all",
             "any_rule": "any",
         }

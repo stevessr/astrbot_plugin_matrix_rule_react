@@ -53,6 +53,8 @@ MESSAGE_TYPE_ALIASES = {
 }
 RULE_TEMPLATE_DEFINITIONS = {
     "single_rule": ("all", "conditions"),
+    "a_and_b": ("all", "conditions"),
+    "a_or_b": ("any", "conditions"),
     "all_rule": ("all", "conditions"),
     "any_rule": ("any", "conditions"),
 }
