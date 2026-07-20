@@ -1,21 +1,14 @@
 """Administrator command implementations for Matrix reaction rules."""
 
-import re
-
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 
 from .rules import (
-    _check_rule_probability,
     format_conditions,
     format_probability,
     normalize_rule_conditions,
     normalize_rule_match_mode,
     parse_conditions,
-)
-
-_PROBABILITY_PATTERN = re.compile(
-    r"\s--probability\s+(-?[0-9]*\.?[0-9]+)\s*$"
 )
 
 
@@ -57,21 +50,25 @@ class MatrixRuleReactCommandMixin:
             yield event.plain_result("fixed 模式必须且只能提供一个 Reaction。")
             return
 
-        # Extract optional --probability flag from the condition_array
+        # Detect optional probability as the first standalone number in the string
         probability = None
         condition_text = str(condition_array or "").strip()
-        prob_match = _PROBABILITY_PATTERN.search(condition_text)
-        if prob_match:
+        if condition_text:
+            first_token = condition_text.split(maxsplit=1)[0]
             try:
-                prob_value = float(prob_match.group(1))
-                if prob_value < 0.0 or prob_value > 1.0:
-                    yield event.plain_result("概率值必须在 0.0 到 1.0 之间。")
-                    return
-                probability = prob_value
+                # Check if the first token that isn't a parenthesized condition is a number
+                if not first_token.startswith("("):
+                    prob_value = float(first_token)
+                    if 0.0 <= prob_value <= 1.0:
+                        probability = prob_value
+                        # Remove the probability token from the start
+                        condition_text = condition_text[len(first_token):].strip()
+                    else:
+                        yield event.plain_result("概率值必须在 0.0 到 1.0 之间。")
+                        return
             except (ValueError, TypeError):
-                yield event.plain_result("概率值无效，请使用 0.0 到 1.0 之间的数值。")
-                return
-            condition_text = _PROBABILITY_PATTERN.sub("", condition_text).strip()
+                # First token is not a number — no probability
+                pass
 
         try:
             conditions = parse_conditions(condition_text)

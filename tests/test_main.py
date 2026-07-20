@@ -849,7 +849,7 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(config.save_count, 0)
 
     async def test_add_command_accepts_probability_flag(self) -> None:
-        """The add command should parse and store an optional --probability flag."""
+        """The add command should parse and store an optional probability prefix."""
         config = PersistedConfig({"matrix_rule_react": {"enable": True, "rules": []}})
         plugin = MatrixRuleReactPlugin(SimpleNamespace(), config)
         event = FakeEvent()
@@ -860,7 +860,7 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
                 event,
                 "fixed",
                 "👍",
-                "(keyword hello) --probability 0.5",
+                "0.5 (keyword hello)",
             )
         ]
 
@@ -882,7 +882,7 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
                 event,
                 "fixed",
                 "👍",
-                "(keyword hello) --probability 1.5",
+                "1.5 (keyword hello)",
             )
         ]
         too_low = [
@@ -891,7 +891,7 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
                 event,
                 "fixed",
                 "👍",
-                "(keyword hello) --probability -0.1",
+                "-0.1 (keyword hello)",
             )
         ]
 
@@ -899,6 +899,28 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("必须在 0.0 到 1.0 之间", too_low[0])
         self.assertEqual(config["matrix_rule_react"]["rules"], [])
         self.assertEqual(config.save_count, 0)
+
+    async def test_add_command_with_probability_in_flat_syntax(self) -> None:
+        """Probability prefix should also work with flat (unparenthesized) syntax."""
+        config = PersistedConfig({"matrix_rule_react": {"enable": True, "rules": []}})
+        plugin = MatrixRuleReactPlugin(SimpleNamespace(), config)
+        event = FakeEvent()
+
+        results = [
+            result
+            async for result in plugin.add_rule(
+                event,
+                "fixed",
+                "👍",
+                "0.3 keyword hello",
+            )
+        ]
+
+        rule = config["matrix_rule_react"]["rules"][0]
+        self.assertIn("已添加规则 #1", results[0])
+        self.assertIn("30%", results[0])
+        self.assertEqual(rule["probability"], 0.3)
+        self.assertEqual(config.save_count, 1)
 
     async def test_probability_gate_blocks_zero_probability_rules(self) -> None:
         """A rule with probability 0.0 should never fire."""
@@ -1167,10 +1189,10 @@ class PluginFileTests(unittest.TestCase):
                     )
 
         rule_items = templates["reaction_rule"]["items"]
-        self.assertEqual(rule_items["conditions"]["type"], "list")
+        self.assertEqual(rule_items["conditions"]["type"], "template_list")
         self.assertFalse(rule_items["conditions"]["invisible"])
         self.assertEqual(
-            rule_items["conditions"]["items"]["match_type"]["options"],
+            rule_items["conditions"]["templates"]["condition"]["items"]["match_type"]["options"],
             [
                 "keyword",
                 "regex",
