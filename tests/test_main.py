@@ -1,5 +1,6 @@
 """Tests for the Matrix rule-reaction plugin."""
 
+import functools
 import json
 import unittest
 from pathlib import Path
@@ -230,6 +231,26 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
         await plugin.on_message(event)
 
         self.assertEqual(event.reactions, [])
+
+    async def test_repeated_astrbot_4266_handler_binding_does_not_stack(self) -> None:
+        """Repeated legacy-core loads should retain exactly one bound instance."""
+        from astrbot.core.star.star_handler import star_handlers_registry
+
+        handler_name = f"{MatrixRuleReactPlugin.__module__}_on_message"
+        handler = star_handlers_registry.star_handlers_map[handler_name]
+        original_handler = handler.handler
+        try:
+            for _ in range(11):
+                plugin = self.make_plugin(
+                    {"matrix_rule_react": {"enable": False}}
+                )
+                handler.handler = functools.partial(handler.handler, plugin)
+
+            self.assertIsInstance(handler.handler, functools.partial)
+            self.assertEqual(len(handler.handler.args), 1)
+            await handler.handler(FakeEvent())
+        finally:
+            handler.handler = original_handler
 
     async def test_enabled_plugin_ignores_an_unmatched_ordinary_message(self) -> None:
         """The all-message handler should stay passive when no rule matches."""
@@ -945,7 +966,7 @@ class PluginFileTests(unittest.TestCase):
         metadata = PluginManager._load_plugin_metadata(str(plugin_root))
 
         self.assertIsNotNone(metadata)
-        self.assertEqual(metadata.version, "0.5.0")
+        self.assertEqual(metadata.version, "0.5.1")
         self.assertEqual(metadata.support_platforms, ["matrix"])
 
     def test_schema_defaults_are_safe(self) -> None:
@@ -992,7 +1013,7 @@ class PluginFileTests(unittest.TestCase):
 
         rule_items = templates["reaction_rule"]["items"]
         self.assertEqual(rule_items["conditions"]["type"], "list")
-        self.assertTrue(rule_items["conditions"]["invisible"])
+        self.assertFalse(rule_items["conditions"]["invisible"])
         self.assertEqual(
             rule_items["conditions"]["items"]["match_type"]["options"],
             [

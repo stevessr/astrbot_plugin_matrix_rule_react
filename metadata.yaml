@@ -2,7 +2,7 @@ name: astrbot_plugin_matrix_rule_react
 display_name: Matrix 规则 React
 description: 根据唤醒或可以使用 AND/OR 组合的消息、用户、机器人及群组条件发送 Matrix Reaction
 author: stevessr
-version: 0.5.0
+version: 0.5.1
 repo: https://github.com/stevessr/astrbot_plugin_matrix_rule_react
 astrbot_version: ">=4.16.0"
 support_platforms:

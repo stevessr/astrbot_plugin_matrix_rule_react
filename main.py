@@ -4,13 +4,31 @@ Decorated handlers remain in this module so AstrBot registers them under the plu
 entrypoint; message and command implementations live in dedicated mixins.
 """
 
+import functools
+
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 from astrbot.core.star.filter.command import GreedyStr
+from astrbot.core.star.star_handler import star_handlers_registry
 
 from .message_handler import MatrixRuleReactMessageMixin
 from .rule_commands import MatrixRuleReactCommandMixin
 from .trigger_filter import MatrixRuleReactTriggerFilter as MatrixRuleReactTriggerFilter
+
+
+def _restore_unbound_handlers() -> None:
+    """Remove stale instance bindings left by repeated AstrBot plugin loads.
+
+    AstrBot 4.26.6 and earlier can apply ``functools.partial`` to the same
+    registered handler on every load. Restoring the decorated callables before
+    the current instance is bound prevents extra plugin instances from being
+    passed as positional handler arguments.
+    """
+    for handler in star_handlers_registry.get_handlers_by_module_name(__name__):
+        raw_handler = handler.handler
+        while isinstance(raw_handler, functools.partial):
+            raw_handler = raw_handler.func
+        handler.handler = raw_handler
 
 
 class MatrixRuleReactPlugin(
@@ -28,6 +46,7 @@ class MatrixRuleReactPlugin(
             config: Plugin configuration loaded from ``_conf_schema.json``.
         """
         super().__init__(context, config)
+        _restore_unbound_handlers()
         self.config = config if isinstance(config, dict) else {}
 
     @filter.platform_adapter_type("matrix")
