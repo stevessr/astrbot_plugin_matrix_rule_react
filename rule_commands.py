@@ -1,13 +1,21 @@
 """Administrator command implementations for Matrix reaction rules."""
 
+import re
+
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 
 from .rules import (
+    _check_rule_probability,
     format_conditions,
+    format_probability,
     normalize_rule_conditions,
     normalize_rule_match_mode,
     parse_conditions,
+)
+
+_PROBABILITY_PATTERN = re.compile(
+    r"\s--probability\s+(-?[0-9]*\.?[0-9]+)\s*$"
 )
 
 
@@ -49,8 +57,24 @@ class MatrixRuleReactCommandMixin:
             yield event.plain_result("fixed 模式必须且只能提供一个 Reaction。")
             return
 
+        # Extract optional --probability flag from the condition_array
+        probability = None
+        condition_text = str(condition_array or "").strip()
+        prob_match = _PROBABILITY_PATTERN.search(condition_text)
+        if prob_match:
+            try:
+                prob_value = float(prob_match.group(1))
+                if prob_value < 0.0 or prob_value > 1.0:
+                    yield event.plain_result("概率值必须在 0.0 到 1.0 之间。")
+                    return
+                probability = prob_value
+            except (ValueError, TypeError):
+                yield event.plain_result("概率值无效，请使用 0.0 到 1.0 之间的数值。")
+                return
+            condition_text = _PROBABILITY_PATTERN.sub("", condition_text).strip()
+
         try:
-            conditions = parse_conditions(condition_array)
+            conditions = parse_conditions(condition_text)
         except ValueError as exc:
             yield event.plain_result(str(exc))
             return
@@ -62,15 +86,17 @@ class MatrixRuleReactCommandMixin:
         raw_rules = raw_config.get("rules", [])
         if not isinstance(raw_rules, list):
             raw_rules = []
-        raw_rules.append(
-            {
-                "__template_key": "reaction_rule",
-                "selection": normalized_selection,
-                "reactions": reaction_keys,
-                "match_mode": "all",
-                "conditions": conditions,
-            }
-        )
+
+        rule = {
+            "__template_key": "reaction_rule",
+            "selection": normalized_selection,
+            "reactions": reaction_keys,
+            "match_mode": "all",
+            "conditions": conditions,
+        }
+        if probability is not None:
+            rule["probability"] = probability
+        raw_rules.append(rule)
         raw_config["rules"] = raw_rules
 
         save_config = getattr(self.config, "save_config", None)
@@ -82,11 +108,13 @@ class MatrixRuleReactCommandMixin:
                 yield event.plain_result(f"规则已加入内存，但持久化失败：{exc}")
                 return
 
+        prob_text = format_probability(probability) if probability is not None else ""
+        prob_suffix = f" [{prob_text}]" if prob_text else ""
         state = "已启用" if bool(raw_config.get("enable", False)) else "当前未启用"
         yield event.plain_result(
             f"已添加规则 #{len(raw_rules)}（插件{state}）："
             f"[{normalized_selection}] {format_conditions(conditions)} "
-            f"-> {', '.join(reaction_keys)}"
+            f"-> {', '.join(reaction_keys)}{prob_suffix}"
         )
 
     async def cmd_list_rules(self, event: AstrMessageEvent):
@@ -130,10 +158,12 @@ class MatrixRuleReactCommandMixin:
                 if not conditions:
                     lines.append(f"{index}. [无效规则] -> {reaction_text or '-'}")
                     continue
+                prob_text = format_probability(raw_rule.get("probability"))
+                prob_suffix = f" [{prob_text}]" if prob_text else ""
                 lines.append(
                     f"{index}. [{selection}] "
                     f"{format_conditions(conditions, match_mode)} "
-                    f"-> {reaction_text or '-'}"
+                    f"-> {reaction_text or '-'}{prob_suffix}"
                 )
         yield event.plain_result("\n".join(lines))
 

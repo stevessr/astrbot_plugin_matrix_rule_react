@@ -282,6 +282,50 @@ def format_conditions(conditions: list[dict[str, str]], match_mode: str = "all")
     )
 
 
+def _check_rule_probability(raw_rule: dict) -> bool:
+    """Check whether a rule's probability gate allows it to fire.
+
+    Args:
+        raw_rule: Persisted reaction rule dictionary.
+
+    Returns:
+        ``True`` when the rule should fire (random roll passed or no probability
+        set), ``False`` when the probability gate blocked it.
+    """
+    probability = raw_rule.get("probability")
+    if probability is None:
+        return True
+    try:
+        prob = float(probability)
+    except (ValueError, TypeError):
+        return True
+    if prob >= 1.0:
+        return True
+    if prob <= 0.0:
+        return False
+    return random.random() < prob
+
+
+def format_probability(probability: object) -> str:
+    """Format a rule's probability value for display.
+
+    Args:
+        probability: Raw probability value from the rule dict.
+
+    Returns:
+        Human-readable probability string, or an empty string for 1.0 (always).
+    """
+    try:
+        prob = float(probability) if probability is not None else 1.0
+    except (ValueError, TypeError):
+        return ""
+    if prob >= 1.0:
+        return ""
+    if prob <= 0.0:
+        return "0%"
+    return f"{round(prob * 100)}%"
+
+
 def select_dynamic_reaction(event: AstrMessageEvent, raw_rules: object) -> str:
     """Select a reaction from the first matching dynamic rule.
 
@@ -396,6 +440,12 @@ def select_dynamic_reaction(event: AstrMessageEvent, raw_rules: object) -> str:
                 break
 
         if matched:
+            if not _check_rule_probability(raw_rule):
+                logger.debug(
+                    "Matrix rule skipped by probability gate: %r",
+                    raw_rule.get("probability"),
+                )
+                continue
             return random.choice(reactions) if selection == "random" else reactions[0]
 
     return ""

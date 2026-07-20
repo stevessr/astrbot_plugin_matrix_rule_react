@@ -848,6 +848,161 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(config["matrix_rule_react"]["rules"], [])
         self.assertEqual(config.save_count, 0)
 
+    async def test_add_command_accepts_probability_flag(self) -> None:
+        """The add command should parse and store an optional --probability flag."""
+        config = PersistedConfig({"matrix_rule_react": {"enable": True, "rules": []}})
+        plugin = MatrixRuleReactPlugin(SimpleNamespace(), config)
+        event = FakeEvent()
+
+        results = [
+            result
+            async for result in plugin.add_rule(
+                event,
+                "fixed",
+                "👍",
+                "(keyword hello) --probability 0.5",
+            )
+        ]
+
+        rule = config["matrix_rule_react"]["rules"][0]
+        self.assertIn("已添加规则 #1", results[0])
+        self.assertIn("50%", results[0])
+        self.assertEqual(rule["probability"], 0.5)
+        self.assertEqual(config.save_count, 1)
+
+    async def test_add_command_rejects_out_of_range_probability(self) -> None:
+        """Probability values outside 0.0~1.0 must be rejected."""
+        config = PersistedConfig({"matrix_rule_react": {"enable": True, "rules": []}})
+        plugin = MatrixRuleReactPlugin(SimpleNamespace(), config)
+        event = FakeEvent()
+
+        too_high = [
+            result
+            async for result in plugin.add_rule(
+                event,
+                "fixed",
+                "👍",
+                "(keyword hello) --probability 1.5",
+            )
+        ]
+        too_low = [
+            result
+            async for result in plugin.add_rule(
+                event,
+                "fixed",
+                "👍",
+                "(keyword hello) --probability -0.1",
+            )
+        ]
+
+        self.assertIn("必须在 0.0 到 1.0 之间", too_high[0])
+        self.assertIn("必须在 0.0 到 1.0 之间", too_low[0])
+        self.assertEqual(config["matrix_rule_react"]["rules"], [])
+        self.assertEqual(config.save_count, 0)
+
+    async def test_probability_gate_blocks_zero_probability_rules(self) -> None:
+        """A rule with probability 0.0 should never fire."""
+        from data.plugins.astrbot_plugin_matrix_rule_react.rules import (
+            select_dynamic_reaction,
+        )
+
+        rules = [
+            {
+                "selection": "fixed",
+                "reactions": ["👍"],
+                "probability": 0.0,
+                "conditions": [{"match_type": "keyword", "pattern": "hello"}],
+            }
+        ]
+        event = FakeEvent()
+
+        reaction = select_dynamic_reaction(event, rules)
+
+        self.assertEqual(reaction, "")
+
+    async def test_probability_gate_always_passes_at_one(self) -> None:
+        """A rule with probability 1.0 should always fire when conditions match."""
+        from data.plugins.astrbot_plugin_matrix_rule_react.rules import (
+            select_dynamic_reaction,
+        )
+
+        rules = [
+            {
+                "selection": "fixed",
+                "reactions": ["👍"],
+                "probability": 1.0,
+                "conditions": [{"match_type": "keyword", "pattern": "hello"}],
+            }
+        ]
+        event = FakeEvent()
+
+        reaction = select_dynamic_reaction(event, rules)
+
+        self.assertEqual(reaction, "👍")
+
+    async def test_probability_gate_respects_random_roll(self) -> None:
+        """A rule with partial probability should respect the random roll."""
+        from data.plugins.astrbot_plugin_matrix_rule_react.rules import (
+            select_dynamic_reaction,
+        )
+
+        rules = [
+            {
+                "selection": "fixed",
+                "reactions": ["👍"],
+                "probability": 0.5,
+                "conditions": [{"match_type": "keyword", "pattern": "hello"}],
+            }
+        ]
+        event = FakeEvent()
+
+        with mock.patch(
+            "data.plugins.astrbot_plugin_matrix_rule_react.rules.random.random",
+            side_effect=[0.3, 0.7],
+        ):
+            first = select_dynamic_reaction(event, rules)
+            second = select_dynamic_reaction(event, rules)
+
+        self.assertEqual(first, "👍")
+        self.assertEqual(second, "")
+
+    async def test_list_command_shows_probability(self) -> None:
+        """The list command should display probability when set."""
+        from data.plugins.astrbot_plugin_matrix_rule_react.rules import (
+            format_probability,
+        )
+
+        self.assertEqual(format_probability(None), "")
+        self.assertEqual(format_probability(1.0), "")
+        self.assertEqual(format_probability(0.5), "50%")
+        self.assertEqual(format_probability(0.0), "0%")
+        self.assertEqual(format_probability(0.333), "33%")
+        self.assertEqual(format_probability("invalid"), "")
+
+        config = PersistedConfig(
+            {
+                "matrix_rule_react": {
+                    "enable": True,
+                    "rules": [
+                        {
+                            "selection": "fixed",
+                            "reactions": ["👍"],
+                            "probability": 0.75,
+                            "conditions": [
+                                {"match_type": "keyword", "pattern": "hello"}
+                            ],
+                        }
+                    ],
+                }
+            }
+        )
+        plugin = MatrixRuleReactPlugin(SimpleNamespace(), config)
+        event = FakeEvent()
+
+        list_results = [result async for result in plugin.list_rules(event)]
+
+        self.assertIn("75%", list_results[0])
+
 
 class PluginFileTests(unittest.TestCase):
     """Check the plugin's user-facing configuration contract."""
