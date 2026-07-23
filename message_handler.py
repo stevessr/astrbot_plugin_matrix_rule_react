@@ -29,7 +29,15 @@ class MatrixRuleReactMessageMixin:
         Returns:
             Selected reaction key, or an empty string when no rule matches.
         """
-        dynamic_reaction = select_dynamic_reaction(event, raw_config.get("rules", []))
+        pity_state = raw_config.get("_pity_state", {})
+        if not isinstance(pity_state, dict):
+            pity_state = {}
+        dynamic_reaction = select_dynamic_reaction(
+            event,
+            raw_config.get("rules", []),
+            pity_state,
+        )
+        raw_config["_pity_state"] = pity_state
         if dynamic_reaction:
             return dynamic_reaction
 

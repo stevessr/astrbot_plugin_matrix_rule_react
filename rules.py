@@ -336,28 +336,35 @@ def format_conditions(conditions: list[dict[str, str]], match_mode: str = "all")
     return separator.join(parts)
 
 
-def _check_rule_probability(raw_rule: dict) -> bool:
-    """Check whether a rule's probability gate allows it to fire.
+def _calc_dynamic_probability(base_prob: float, failures: int, successes: int) -> float:
+    """Calculate effective probability with streak-based dynamic adjustment.
+
+    For base probability *n*:
+    - Consecutive failures increase effective probability, reaching 1.0
+      at ``(1/n)²`` consecutive failures.
+    - Consecutive successes decrease effective probability, reaching 0.0
+      at ``(1/n)`` consecutive successes.
 
     Args:
-        raw_rule: Persisted reaction rule dictionary.
+        base_prob: Base probability (0.0–1.0).
+        failures: Consecutive probability failures so far.
+        successes: Consecutive probability successes so far.
 
     Returns:
-        ``True`` when the rule should fire (random roll passed or no probability
-        set), ``False`` when the probability gate blocked it.
+        Effective probability after streak adjustment.
     """
-    probability = raw_rule.get("probability")
-    if probability is None:
-        return True
-    try:
-        prob = float(probability)
-    except (ValueError, TypeError):
-        return True
-    if prob >= 1.0:
-        return True
-    if prob <= 0.0:
-        return False
-    return random.random() < prob
+    if base_prob <= 0.0 or base_prob >= 1.0:
+        return base_prob
+
+    # Upper bound — at (1/n)² failures, probability reaches 1.0
+    max_failures = max(int(1.0 / base_prob) ** 2, 1)
+    # Lower bound — at (1/n) successes, probability reaches 0.0
+    max_successes = max(int(1.0 / base_prob), 1)
+
+    up = (1.0 - base_prob) * min(failures, max_failures) / max_failures
+    down = base_prob * min(successes, max_successes) / max_successes
+
+    return max(0.0, min(1.0, base_prob + up - down))
 
 
 def format_probability(probability: object) -> str:
@@ -380,7 +387,11 @@ def format_probability(probability: object) -> str:
     return f"{round(prob * 100)}%"
 
 
-def select_dynamic_reaction(event: AstrMessageEvent, raw_rules: object) -> str:
+def select_dynamic_reaction(
+    event: AstrMessageEvent,
+    raw_rules: object,
+    pity_state: dict | None = None,
+) -> str:
     """Select a reaction from the first matching dynamic rule.
 
     Args:
@@ -436,7 +447,7 @@ def select_dynamic_reaction(event: AstrMessageEvent, raw_rules: object) -> str:
                     MESSAGE_TYPE_ALIASES.get(normalized_type, normalized_type)
                 )
 
-    for raw_rule in raw_rules:
+    for index, raw_rule in enumerate(raw_rules):
         if not isinstance(raw_rule, dict):
             continue
 
@@ -515,12 +526,51 @@ def select_dynamic_reaction(event: AstrMessageEvent, raw_rules: object) -> str:
                 break
 
         if matched:
-            if not _check_rule_probability(raw_rule):
-                logger.debug(
-                    "Matrix rule skipped by probability gate: %r",
-                    raw_rule.get("probability"),
-                )
+            # Dynamic probability adjustment based on consecutive results
+            base_prob = raw_rule.get("probability")
+            if base_prob is None:
+                return random.choice(reactions) if selection == "random" else reactions[0]
+
+            try:
+                bp = float(base_prob)
+            except (ValueError, TypeError):
+                bp = 1.0
+
+            if bp >= 1.0:
+                return random.choice(reactions) if selection == "random" else reactions[0]
+
+            if bp <= 0.0:
+                logger.debug("Matrix rule skipped (probability=0.0)")
                 continue
-            return random.choice(reactions) if selection == "random" else reactions[0]
+
+            # Read streak state for this rule
+            raw_state = pity_state.get(str(index), {}) if isinstance(pity_state, dict) else {}
+            rule_state = raw_state if isinstance(raw_state, dict) else {}
+            failures = rule_state.get("failures", 0)
+            successes = rule_state.get("successes", 0)
+
+            # Calculate dynamically adjusted probability
+            effective_prob = _calc_dynamic_probability(bp, failures, successes)
+
+            if random.random() < effective_prob:
+                # Probability passed — fire, update streak
+                if isinstance(pity_state, dict):
+                    pity_state[str(index)] = {"failures": 0, "successes": successes + 1}
+                logger.debug(
+                    "Matrix rule fired (effective=%.3f, base=%.3f, "
+                    "failures=%d, successes=%d)",
+                    effective_prob, bp, failures, successes,
+                )
+                return random.choice(reactions) if selection == "random" else reactions[0]
+
+            # Probability failed — update streak, continue to next rule
+            if isinstance(pity_state, dict):
+                pity_state[str(index)] = {"failures": failures + 1, "successes": 0}
+            logger.debug(
+                "Matrix rule skipped by dynamic probability gate "
+                "(effective=%.3f, base=%.3f, failures=%d, successes=%d)",
+                effective_prob, bp, failures, successes,
+            )
+            continue
 
     return ""

@@ -1011,6 +1011,117 @@ class MatrixRuleReactPluginTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("75%", list_results[0])
 
+    # --- Dynamic probability (built-in streak adjustment) tests ---
+
+    async def test_calc_dynamic_probability_formula(self) -> None:
+        """The dynamic probability formula should compute correct values."""
+        from data.plugins.astrbot_plugin_matrix_rule_react.rules import (
+            _calc_dynamic_probability,
+        )
+
+        # n=0.5: max_failures=4, max_successes=2
+        self.assertAlmostEqual(_calc_dynamic_probability(0.5, 0, 0), 0.5)
+        self.assertAlmostEqual(_calc_dynamic_probability(0.5, 1, 0), 0.625)
+        self.assertAlmostEqual(_calc_dynamic_probability(0.5, 2, 0), 0.75)
+        self.assertAlmostEqual(_calc_dynamic_probability(0.5, 3, 0), 0.875)
+        self.assertAlmostEqual(_calc_dynamic_probability(0.5, 4, 0), 1.0)
+        self.assertAlmostEqual(_calc_dynamic_probability(0.5, 0, 1), 0.25)
+        self.assertAlmostEqual(_calc_dynamic_probability(0.5, 0, 2), 0.0)
+
+        # n=0.3: max_failures=9, max_successes=3
+        self.assertAlmostEqual(_calc_dynamic_probability(0.3, 9, 0), 1.0)
+        self.assertAlmostEqual(_calc_dynamic_probability(0.3, 0, 3), 0.0)
+
+        # Extremes
+        self.assertAlmostEqual(_calc_dynamic_probability(0.0, 0, 0), 0.0)
+        self.assertAlmostEqual(_calc_dynamic_probability(1.0, 0, 0), 1.0)
+
+    async def test_dynamic_probability_failure_streak_to_certainty(self) -> None:
+        """After (1/n)² failures, effective=1.0 and the rule always fires."""
+        from data.plugins.astrbot_plugin_matrix_rule_react.rules import (
+            select_dynamic_reaction,
+        )
+
+        rules = [{
+            "selection": "fixed",
+            "reactions": ["👍"],
+            "probability": 0.5,
+            "conditions": [{"match_type": "keyword", "pattern": "hello"}],
+        }]
+        event = FakeEvent()
+        state: dict = {}
+
+        with mock.patch(
+            "data.plugins.astrbot_plugin_matrix_rule_react.rules.random.random",
+            return_value=0.999,
+        ):
+            for i in range(4):
+                result = select_dynamic_reaction(event, rules, state)
+                self.assertEqual(result, "", f"Expected failure at iteration {i}")
+
+            # 5th check: effective prob reaches 1.0 → always fires
+            result = select_dynamic_reaction(event, rules, state)
+            self.assertEqual(result, "👍")
+
+    async def test_dynamic_probability_reduces_on_success(self) -> None:
+        """Consecutive successes reduce effective probability."""
+        from data.plugins.astrbot_plugin_matrix_rule_react.rules import (
+            select_dynamic_reaction,
+        )
+
+        rules = [{
+            "selection": "fixed",
+            "reactions": ["👍"],
+            "probability": 0.8,
+            "conditions": [{"match_type": "keyword", "pattern": "hello"}],
+        }]
+        event = FakeEvent()
+        state: dict = {}
+
+        with mock.patch(
+            "data.plugins.astrbot_plugin_matrix_rule_react.rules.random.random",
+            return_value=0.0,
+        ):
+            # First success (n=0.8, max_successes=int(1/0.8)=1)
+            result = select_dynamic_reaction(event, rules, state)
+            self.assertEqual(result, "👍")
+
+            # After 1 success, effective = 0.8 - 0.8*1/1 = 0.0 → never fires
+            result = select_dynamic_reaction(event, rules, state)
+            self.assertEqual(result, "")
+
+    async def test_dynamic_probability_works_through_message_handler(self) -> None:
+        """Dynamic probability automatically applies via handle_message."""
+        config = PersistedConfig({
+            "matrix_rule_react": {
+                "enable": True,
+                "rules": [{
+                    "selection": "fixed",
+                    "reactions": ["👍"],
+                    "probability": 0.5,
+                    "conditions": [
+                        {"match_type": "keyword", "pattern": "build passed"},
+                    ],
+                }],
+            }
+        })
+        plugin = MatrixRuleReactPlugin(SimpleNamespace(), config)
+        event = FakeEvent(message_text="build passed", is_native_wake=False)
+
+        # After (1/0.5)² = 4 consecutive failures, the 5th fires with certainty
+        with mock.patch(
+            "data.plugins.astrbot_plugin_matrix_rule_react.rules.random.random",
+            return_value=0.999,
+        ):
+            for i in range(4):
+                await plugin.on_message(event)
+                self.assertEqual(event.reactions, [],
+                                 f"Expected no reaction at attempt {i+1}")
+
+            # 5th call: effective=1.0 → always fires
+            await plugin.on_message(event)
+            self.assertEqual(event.reactions, ["👍"])
+
 
 class PluginFileTests(unittest.TestCase):
     """Check the plugin's user-facing configuration contract."""

@@ -50,24 +50,21 @@ class MatrixRuleReactCommandMixin:
             yield event.plain_result("fixed 模式必须且只能提供一个 Reaction。")
             return
 
-        # Detect optional probability as the first standalone number in the string
+        # Detect optional probability as the first standalone number
         probability = None
         condition_text = str(condition_array or "").strip()
         if condition_text:
             first_token = condition_text.split(maxsplit=1)[0]
             try:
-                # Check if the first token that isn't a parenthesized condition is a number
                 if not first_token.startswith("("):
                     prob_value = float(first_token)
                     if 0.0 <= prob_value <= 1.0:
                         probability = prob_value
-                        # Remove the probability token from the start
                         condition_text = condition_text[len(first_token):].strip()
                     else:
                         yield event.plain_result("概率值必须在 0.0 到 1.0 之间。")
                         return
             except (ValueError, TypeError):
-                # First token is not a number — no probability
                 pass
 
         try:
@@ -186,6 +183,23 @@ class MatrixRuleReactCommandMixin:
 
         removed_rule = raw_rules.pop(index - 1)
         raw_config["rules"] = raw_rules
+
+        # Clean up pity state for the removed rule and shift subsequent counters
+        pity_state = raw_config.get("_pity_state", {})
+        if isinstance(pity_state, dict):
+            removed_key = str(index - 1)
+            pity_state.pop(removed_key, None)
+            shifted: dict[str, int] = {}
+            for key, val in list(pity_state.items()):
+                try:
+                    idx = int(key)
+                    if idx > index - 1:
+                        shifted[str(idx - 1)] = val
+                    else:
+                        shifted[key] = val
+                except (ValueError, TypeError):
+                    shifted[key] = val
+            raw_config["_pity_state"] = shifted
         save_config = getattr(self.config, "save_config", None)
         if callable(save_config):
             try:
